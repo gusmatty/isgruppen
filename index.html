@@ -64,6 +64,8 @@
   .card.past  { background: var(--past-bg); opacity: .75; }
   .card.mine  { box-shadow: 0 0 0 2px var(--brand2) inset, 0 1px 2px rgba(0,0,0,.06); }
   .card.drop  { outline: 3px dashed var(--brand2); outline-offset: 2px; }
+  .card.dragging { opacity: .45; }
+  .card[draggable=true] { cursor: grab; }
   .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--jour-bg); color: var(--jour); margin-left: 4px; vertical-align: 1px; }
   .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
   .more { display: block; margin: 16px auto; }
