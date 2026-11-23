@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "1.4 (väder)";
+  const APP_VERSION = "1.5 (ny design)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -151,10 +151,25 @@
   const WX = { series: [], fetched: 0 };
   const SNOW_SYMBOLS = new Set([15, 16, 17, 25, 26, 27]);
   const SLEET_SYMBOLS = new Set([12, 13, 14, 22, 23, 24]);
-  function wxIcon(code) {
-    if (code <= 2) return "☀️"; if (code <= 4) return "⛅"; if (code <= 6) return "☁️"; if (code === 7) return "🌫️";
-    if (code <= 10) return "🌦️"; if (code === 11 || code === 21) return "⛈️"; if (code <= 14) return "🌨️";
-    if (code <= 17) return "🌨️"; if (code <= 20) return "🌧️"; if (code <= 24) return "🌨️"; return "❄️";
+  // Väderikoner som SVG (färg via CSS-klass, fungerar i ljust och mörkt tema)
+  const SVG = {
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    cloud: '<path d="M17.5 19H8a5 5 0 1 1 1.2-9.9A6 6 0 0 1 20 11.5 3.8 3.8 0 0 1 17.5 19z"/>',
+    rain: '<path d="M16 13H8a4 4 0 1 1 1-7.9A5 5 0 0 1 18 8a3 3 0 0 1-2 5z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
+    snow: '<path d="M12 2v20M4.2 7l15.6 10M4.2 17L19.8 7M9 4l3 2 3-2M9 20l3-2 3 2"/>',
+    note: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  };
+  function svg(name, size = 16, cls = "") {
+    return `<svg class="${cls}" aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${SVG[name]}</svg>`;
+  }
+  function wxIcon(code, size = 15) {
+    let k = "cloud";
+    if (code <= 2) k = "sun";
+    else if (code <= 7) k = "cloud";
+    else if (code <= 11 || (code >= 18 && code <= 21)) k = "rain";
+    else k = "snow";
+    return svg(k, size, "ic-" + k);
   }
   // WMO-väderkod (Open-Meteo) → ungefärlig SMHI-symbolkod
   function wmoToSym(c) {
@@ -226,20 +241,20 @@
     if (s.end <= new Date()) return "";
     const w = wxSummary(wxPoints(s.start, s.end));
     if (!w) return "";
-    return `<span class="wx${w.snow ? " snow" : ""}" title="Väderprognos">${w.icon} ${tempTxt(w)}${w.snow ? " snö" : ""}</span>`;
+    return `<span class="wx${w.snow ? " snow" : ""}" title="Väderprognos">${w.icon}${tempTxt(w)}${w.snow ? " snö" : ""}</span>`;
   }
   function wxDay(d) {
     const from = startOfDay(d), to = addDays(from, 1);
     if (to <= new Date()) return "";
     const w = wxSummary(wxPoints(from, to));
     if (!w) return "";
-    return `<span class="wxday">${w.icon} ${w.min}…${w.max}°${w.pr >= 0.5 ? ` · ${w.pr.toFixed(1).replace(".", ",")} mm` : ""}</span>`;
+    return `<span class="wxday">${w.icon}${w.min}…${w.max}°${w.pr >= 0.5 ? ` · ${w.pr.toFixed(1).replace(".", ",")} mm` : ""}</span>`;
   }
   function wxDetail(s) {
     const pts = wxPoints(s.start, s.end);
     if (s.end <= new Date() || !pts.length) return "";
     return `<section><h4>Väder under passet</h4><div class="wxrow">${pts.map((p) =>
-      `<span><b>${hm(new Date(p.t))}</b><br>${wxIcon(p.sym)} ${Math.round(p.temp)}°<br><small>${Math.round(p.wind)} m/s${p.pr >= 0.1 ? ` · ${p.pr.toFixed(1).replace(".", ",")} mm` : ""}</small></span>`).join("")}</div></section>`;
+      `<span><b>${hm(new Date(p.t))}</b><br>${wxIcon(p.sym, 18)} ${Math.round(p.temp)}°<br><small>${Math.round(p.wind)} m/s${p.pr >= 0.1 ? ` · ${p.pr.toFixed(1).replace(".", ",")} mm` : ""}</small></span>`).join("")}</div></section>`;
   }
 
   // ---------- Rendering ----------
@@ -251,7 +266,12 @@
 
   function renderHeader() {
     const m = me();
-    $("#meBtn").textContent = m ? "👤 " + m.name : "Vem är du?";
+    $("#meBtn").textContent = m ? m.name : "Vem är du?";
+    const dark = document.documentElement.dataset.theme === "dark";
+    const tb = $("#themeBtn");
+    tb.innerHTML = svg(dark ? "sun" : "moon", 18);
+    tb.setAttribute("aria-label", dark ? "Byt till ljust tema" : "Byt till mörkt tema");
+    tb.title = tb.getAttribute("aria-label");
     const a = $("#adminBtn");
     a.textContent = isAdmin() ? "Admin ✓" : "Admin";
     a.classList.toggle("admin-on", isAdmin());
@@ -267,7 +287,7 @@
       <span class="spacer"></span>
       <button class="btn" id="shareBtn">📣 Dela lediga pass</button>
       <button class="btn" id="logBtn">Logg</button>
-      <div class="seg"><button data-v="list" class="${!week ? "on" : ""}">Lista</button><button data-v="week" class="${week ? "on" : ""}">Vecka</button></div>`;
+      <div class="seg viewseg"><button data-v="list" class="${!week ? "on" : ""}">Lista</button><button data-v="week" class="${week ? "on" : ""}">Vecka</button></div>`;
     tb.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { S.filter = b.dataset.f; store.set("isg_filter", S.filter); render(); });
     tb.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { S.view = b.dataset.v; store.set("isg_view", S.view); render(); });
     tb.querySelectorAll("[data-wk]").forEach((b) => b.onclick = () => {
@@ -279,15 +299,35 @@
     $("#logBtn").onclick = openLog;
   }
 
+  const initials = (name) => {
+    const w = String(name).trim().split(/\s+/);
+    return w.length > 1 ? (w[0][0] + w[1][0]).toUpperCase() : w[0].slice(0, 2);
+  };
+  function seatsHtml(s) {
+    let h = "";
+    for (let i = 0; i < s.max_people; i++) {
+      const b = s.bookings[i];
+      h += b ? `<span class="seat filled" title="${esc(personName(b.person_id))}">${esc(initials(personName(b.person_id)))}</span>`
+             : `<span class="seat${i < s.min_people ? " req" : ""}" aria-hidden="true"></span>`;
+    }
+    return h;
+  }
+  function statusLabel(s, st) {
+    const n = s.bookings.length;
+    return { red: "Saknar " + (s.min_people - n), jour: "Ingen jour", full: "Fullt", green: "Bemannat", past: "Klart" }[st];
+  }
   function cardHtml(s, compact = false) {
     const st = status(s);
     const names = s.bookings.map((b) => esc(personName(b.person_id))).join(", ");
-    const sub = [esc(s.place), names || (s.is_jour ? "Ingen jour" : "")].filter(Boolean).join(" · ");
-    return `<div class="card ${st}${isMine(s) ? " mine" : ""}" data-id="${s.id}">
-      <div class="time">${timeRange(s)}</div>
-      <div class="mid"><div class="ttl">${esc(s.title)}${s.is_jour ? '<span class="tag">JOUR</span>' : ""}${s.notes.length ? " 💬" : ""}</div>
-      <div class="sub">${sub}</div>${wxShift(s) ? `<div class="sub">${wxShift(s)}</div>` : ""}</div>
-      <div class="cnt">${st === "past" ? "Klart" : countText(s)}</div></div>`;
+    const pill = `<span class="pill" title="${countText(s)}">${statusLabel(s, st)}</span>`;
+    const extra = `${s.is_jour ? '<span class="tag">JOUR</span>' : ""}${s.notes.length ? `<span class="noteic" title="Har anteckningar">${svg("note", 14)}</span>` : ""}`;
+    const wx = wxShift(s);
+    return `<div class="card st-${st}${isMine(s) ? " mine" : ""}" data-id="${s.id}">
+      <div class="c-top"><div class="c-time">${timeRange(s)}</div>${compact ? "" : pill}</div>
+      <div class="c-mid"><b>${esc(s.title)}</b>${compact ? "" : `<span class="place">· ${esc(s.place)}</span>`}${extra}
+        ${compact ? `${wx}<span class="place">· ${esc(s.place)}</span>` : `<span class="spacer"></span>${wx}`}</div>
+      <div class="c-seats">${seatsHtml(s)}${compact ? pill : `<span class="c-names">${names || (s.is_jour ? "Ingen har jouren" : "Ingen bokad")}</span>`}</div>
+    </div>`;
   }
 
   const SHIFT_MIME = "application/x-isg-shift";
@@ -375,10 +415,10 @@
     for (let i = 0; i < 7; i++) {
       const d = addDays(S.weekStart, i), k = dayKey(d);
       const items = S.shifts.filter((s) => dayKey(s.start) === k);
-      cols += `<div class="wcol"><div class="whead${k === todayKey ? " today" : ""}">${shortDay(d)}${wxDay(d) ? `<br>${wxDay(d)}` : ""}</div>${items.map((s) => cardHtml(s, true)).join("") || ""}</div>`;
+      cols += `<div class="wcol"><div class="whead${k === todayKey ? " today" : ""}">${shortDay(d)}${wxDay(d)}</div>${items.map((s) => cardHtml(s, true)).join("") || ""}</div>`;
     }
     main.innerHTML = `<div class="weekwrap">
-      <aside class="names"><h3>Namn</h3>${chips}<button class="chip" id="addNameChip" style="background:#fff;border:1px dashed var(--line)">+ Namn</button>
+      <aside class="names"><h3>Namn</h3>${chips}<button class="chip add" id="addNameChip">+ Namn</button>
       <p class="hint">Dra ett namn till ett pass för att boka.${isAdmin() ? "<br><br>Admin: dra ett pass till ett annat pass för att kopiera inställningarna dit (datumet behålls)." : ""}</p></aside>
       <div class="week">${cols}</div></div>`;
     main.querySelectorAll(".chip[data-pid]").forEach((c) => {
@@ -479,7 +519,7 @@
         <div class="meta">${dayLabel(s.start)} · ${timeRange(s)}<br>${esc(s.place)} · ${esc(s.work_type)}${s.created_by ? ` · upplagt av ${esc(s.created_by)}` : ""}</div>
         ${s.description ? `<div class="note">${esc(s.description)}</div>` : ""}
         <section><h4>Bokade · ${countText(s)} · ${stText}</h4>
-          ${s.bookings.map((b) => `<div class="booked"><span>👤 <b>${esc(personName(b.person_id))}</b></span>${!locked ? `<button class="rm" data-un="${b.person_id}">Avboka</button>` : ""}</div>`).join("") || `<div class="meta">Ingen bokad ännu.</div>`}
+          ${s.bookings.map((b) => `<div class="booked"><span><span class="seat filled">${esc(initials(personName(b.person_id)))}</span><b>${esc(personName(b.person_id))}</b></span>${!locked ? `<button class="rm" data-un="${b.person_id}">Avboka</button>` : ""}</div>`).join("") || `<div class="meta">Ingen bokad ännu.</div>`}
           ${lastUnbook && st !== "past" && s.bookings.length < s.min_people ? `<div class="alert">Passet saknar folk nu. <button class="btn" id="shareThis">📣 Dela i Messenger</button></div>` : ""}
           ${!locked ? `
             <div style="margin-top:10px">${m0
@@ -651,6 +691,13 @@
 
   // ---------- Start ----------
   $("#meBtn").onclick = () => openWho();
+  $("#themeBtn").onclick = () => {
+    const dark = document.documentElement.dataset.theme !== "dark";
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    store.set("isg_theme", dark ? "dark" : "light");
+    const mc = document.querySelector('meta[name="theme-color"]'); if (mc) mc.content = dark ? "#0B141B" : "#0B2A3F";
+    renderHeader();
+  };
   $("#adminBtn").onclick = openAdmin;
   $("#newBtn").onclick = () => openShiftForm();
   window.matchMedia("(min-width: 900px)").addEventListener("change", () => { if (!S.view) render(); });
