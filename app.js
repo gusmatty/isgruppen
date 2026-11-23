@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "1.6 (statusmärken)";
+  const APP_VERSION = "1.7 (guide)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -159,6 +159,10 @@
     snow: '<path d="M12 2v20M4.2 7l15.6 10M4.2 17L19.8 7M9 4l3 2 3-2M9 20l3-2 3 2"/>',
     note: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
     moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+    dots: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
   };
   function svg(name, size = 16, cls = "") {
     return `<svg class="${cls}" aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${SVG[name]}</svg>`;
@@ -273,7 +277,8 @@
     tb.setAttribute("aria-label", dark ? "Byt till ljust tema" : "Byt till mörkt tema");
     tb.title = tb.getAttribute("aria-label");
     const a = $("#adminBtn");
-    a.textContent = isAdmin() ? "Admin ✓" : "Admin";
+    a.innerHTML = `${svg("lock", 16)}<span class="hlabel">${isAdmin() ? "Admin ✓" : "Admin"}</span>`;
+    a.setAttribute("aria-label", isAdmin() ? "Adminläge på" : "Admin");
     a.classList.toggle("admin-on", isAdmin());
   }
 
@@ -681,6 +686,96 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
+
+  // ---------- Guide ----------
+  function detectDevice() {
+    const ua = navigator.userAgent || "";
+    const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    const inApp = /FBAN|FBAV|FB_IAB|Messenger|Instagram/.test(ua);
+    const chromeIOS = /CriOS/.test(ua);
+    if (inApp) return "messenger";
+    if (ios) return chromeIOS ? "ios-chrome" : "ios-safari";
+    if (android) return "android";
+    return "desktop";
+  }
+  function openGuide() {
+    const dev = detectDevice();
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+    const o = (k) => (k === dev ? " open" : "");
+    const ex = (st, label) => `<span class="st-${st}"><span class="pill">${label}</span></span>`;
+    modal(`<h2>${svg("info", 20)} Guide</h2>
+      <div class="meta">Så lägger du appen på hemskärmen och så använder du den.</div>
+
+      <section><h4>Lägg appen på hemskärmen</h4>
+        ${isStandalone ? `<div class="alert">Du har redan öppnat appen från hemskärmen. 👍</div>` : ""}
+        <details class="g"${o("ios-safari")}><summary>iPhone – Safari</summary><ol>
+          <li>Öppna <b>${esc(appUrl())}</b> i Safari.</li>
+          <li>Tryck på <b>dela-knappen</b> ${svg("share", 15)} (längst ner eller uppe i adressfältet).</li>
+          <li>Scrolla ner och välj <b>Lägg till på hemskärmen</b>.</li>
+          <li>Tryck <b>Lägg till</b> uppe till höger.</li></ol></details>
+        <details class="g"${o("ios-chrome")}><summary>iPhone – Chrome</summary><ol>
+          <li>Tryck på <b>dela-ikonen</b> ${svg("share", 15)} till höger i adressfältet.</li>
+          <li>Välj <b>Lägg till på hemskärmen</b> (scrolla ner om du inte ser det).</li>
+          <li>Tryck <b>Lägg till</b>.</li></ol>
+          <p class="gnote">Saknas valet? Öppna länken i Safari i stället och följ guiden ovan.</p></details>
+        <details class="g"${o("android")}><summary>Android – Chrome</summary><ol>
+          <li>Öppna länken i Chrome.</li>
+          <li>Tryck på <b>⋮</b> uppe till höger.</li>
+          <li>Välj <b>Lägg till på startskärmen</b> eller <b>Installera app</b>.</li>
+          <li>Bekräfta med <b>Lägg till</b> / <b>Installera</b>.</li></ol></details>
+        <details class="g"${o("messenger")}><summary>Öppnade du länken från Messenger?</summary>
+          <p>Messengers inbyggda webbläsare kan inte lägga appen på hemskärmen. Tryck på <b>⋯</b> (uppe till höger) och välj
+          <b>Öppna i Safari</b> eller <b>Öppna i Chrome</b>. Följ sedan guiden för din telefon.</p></details>
+        <details class="g"${o("desktop")}><summary>Dator</summary>
+          <p>Spara sidan som bokmärke, eller i Chrome/Edge: klicka på installera-ikonen i adressfältet för att få den som ett eget fönster.</p></details>
+        <p class="gnote">På iPhone kommer hemskärmsappen inte ihåg valen från Safari – välj ditt namn en gång till första gången.</p>
+      </section>
+
+      <section><h4>Så läser du ett pass</h4>
+        <div class="gdemo">
+          <div class="c-top"><div class="c-time">18:00–20:00</div>${ex("red", "Saknar 1")}</div>
+          <div class="c-mid"><b>Spolning</b><span class="place">· Båda</span><span class="spacer"></span><span class="wx">${wxIcon(26)}-6° snö</span></div>
+          <div class="c-seats st-red"><span class="seat filled">Ma</span><span class="seat req"></span><span class="seat"></span><span class="c-names">Mattias</span></div>
+        </div>
+        <ul class="glist">
+          <li><b>Tiden</b> står stort överst, därunder vad som ska göras och var (<i>Stora planen</i>, <i>Lilla planen</i> eller <i>Båda</i>).</li>
+          <li><b>Cirklarna</b> är platserna på passet: <span class="seat filled sm">Ma</span> = bokad,
+            <span class="st-red"><span class="seat req sm"></span></span> = måste fyllas, <span class="seat sm"></span> = får gärna vara fler.</li>
+          <li><b>Märket</b> visar läget: ${ex("red", "Saknar 1")} ${ex("green", "Bemannat")} ${ex("full", "Fullt")} ${ex("jour", "Ingen jour")}</li>
+          <li><b>Vädret</b> är prognosen under passet. Står det <span class="wx snow">${wxIcon(26)} snö</span> väntas snö – bra att veta för snöjouren.</li>
+          <li><b>JOUR</b> = snöjour: den som bokar lovar att röja <i>om</i> det snöar.</li>
+          <li>En <span class="noteic">${svg("note", 14)}</span> betyder att någon skrivit en anteckning. Dina egna pass har en blå ram.</li>
+        </ul>
+      </section>
+
+      <section><h4>Boka och avboka</h4>
+        <ul class="glist">
+          <li><b>Första gången:</b> tryck på namnknappen uppe till höger och välj vem du är. Telefonen kommer ihåg det.
+            Saknas ditt namn kan du lägga till det själv.</li>
+          <li><b>Boka på mobilen:</b> tryck på passet → <b>Boka mig</b>.</li>
+          <li><b>Boka på datorn:</b> välj <i>Vecka</i> och dra ditt namn från listan till vänster och släpp det på passet.</li>
+          <li><b>Boka in någon annan:</b> öppna passet → välj namn i <i>Boka in någon annan</i>. Bra om någon sagt ja i Messenger.</li>
+          <li><b>Avboka:</b> öppna passet → <b>Avboka mig</b> (eller <i>Avboka</i> bredvid ett namn). Avbokar du nära inpå får du en knapp
+            för att be om ersättare i Messenger.</li>
+          <li>Du kan inte vara bokad på två pass samtidigt. Pass som har passerat är låsta.</li>
+        </ul>
+      </section>
+
+      <section><h4>Mer du kan göra</h4>
+        <ul class="glist">
+          <li><b>+ Nytt pass:</b> lägg upp ett eget pass, t.ex. spårning, hyvling eller snöröjning. Kryssa i <i>Snöjour</i> för ett jourpass.</li>
+          <li><b>Anteckningar:</b> är du bokad på ett pass kan du skriva en anteckning, t.ex. "Tankvagnen läcker" eller "Klart 20:30".</li>
+          <li><b>Lägg i kalender:</b> öppna passet → <i>Lägg i kalender</i> så får du en påminnelse en timme innan.</li>
+          <li><b>Dela lediga pass:</b> gör en färdig text med alla pass som saknar folk – klistra in i Messenger-gruppen.</li>
+          <li><b>Filter:</b> <i>Mina pass</i> visar bara dina, <i>Saknar folk</i> visar var det behövs folk.</li>
+          <li><b>Logg:</b> visar vem som bokat, avbokat och ändrat vad.</li>
+          <li><b>Tema:</b> knappen med måne/sol byter mellan ljust och mörkt.</li>
+          <li><b>Hänglåset</b> ${svg("lock", 14)} är för admin (kräver PIN-kod) och behövs inte för att boka.</li>
+        </ul>
+      </section>`);
+  }
+
   // ---------- Logg ----------
   async function openLog() {
     const { data, error } = await sb.from("changelog").select("*").order("id", { ascending: false }).limit(150);
@@ -691,6 +786,8 @@
 
   // ---------- Start ----------
   $("#meBtn").onclick = () => openWho();
+  $("#infoBtn").innerHTML = svg("info", 20);
+  $("#infoBtn").onclick = openGuide;
   $("#themeBtn").onclick = () => {
     const dark = document.documentElement.dataset.theme !== "dark";
     document.documentElement.dataset.theme = dark ? "dark" : "light";

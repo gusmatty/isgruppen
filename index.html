@@ -80,6 +80,10 @@
   header h1 small { font: 400 13px Inter, sans-serif; opacity: .75; margin-left: 6px; }
   .hbtn { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 999px; padding: 8px 13px; font-size: 14px; font-weight: 600; white-space: nowrap; min-height: 36px; }
   .hbtn.admin-on { background: #F3C14B; color: #3A2A00; }
+  .hbtn svg { vertical-align: -3px; }
+  #adminBtn { display: inline-flex; align-items: center; gap: 6px; }
+  #meBtn { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+  header h1 { min-width: 0; }
   .hbtn.icon { width: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 
   .toolbar { display: flex; gap: 8px; padding: 12px 14px 6px; flex-wrap: wrap; align-items: center; }
@@ -201,12 +205,31 @@
   .credit { text-align: center; font-size: 12px; color: var(--muted); padding: 10px; }
   .setup { max-width: 560px; margin: 40px auto; background: var(--card); padding: 20px; border-radius: 12px; }
   @media (max-width: 600px) { .viewseg { display: none; } .toolbar .btn { padding: 7px 10px; font-size: 13px; } }
+  @media (max-width: 420px) { header { gap: 6px; } .hbtn.icon { width: 36px; } #adminBtn .hlabel { display: none; } #adminBtn { width: 36px; padding: 0; justify-content: center; } #meBtn { max-width: 110px; } }
+  /* Guide */
+  .modal h2 svg { vertical-align: -3px; }
+  details.g { border: 1px solid var(--line); border-radius: 12px; margin: 8px 0; background: var(--surface2); }
+  details.g summary { cursor: pointer; padding: 12px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details.g summary::-webkit-details-marker { display: none; }
+  details.g summary::after { content: "+"; font-size: 20px; color: var(--muted); }
+  details.g[open] summary::after { content: "–"; }
+  details.g ol, details.g p { margin: 0; padding: 0 14px 12px 34px; }
+  details.g p { padding-left: 14px; }
+  details.g li { margin: 4px 0; }
+  details.g li svg { vertical-align: -2px; }
+  .gnote { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  .glist { margin: 0; padding-left: 20px; }
+  .glist li { margin: 8px 0; }
+  .glist .pill { vertical-align: 1px; margin: 2px 2px; }
+  .gdemo { background: var(--card); border-radius: 16px; padding: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--line); margin-bottom: 8px; }
+  .seat.sm { width: 20px; height: 20px; font-size: 9px; display: inline-flex; vertical-align: -5px; }
   @media (max-width: 420px) { .c-time { font-size: 19px; } header h1 small { display: none; } .hbtn { padding: 8px 10px; } }
 </style>
 </head>
 <body>
 <header>
   <h1>IS-gruppen <small>Borlänge Bandy</small></h1>
+  <button class="hbtn icon" id="infoBtn" aria-label="Guide och hjälp" title="Guide och hjälp"></button>
   <button class="hbtn icon" id="themeBtn" aria-label="Byt tema"></button>
   <button class="hbtn" id="meBtn">Vem är du?</button>
   <button class="hbtn" id="adminBtn">Admin</button>
@@ -223,8 +246,8 @@
 <button class="fab" id="newBtn">+ Nytt pass</button>
 <div id="modalRoot"></div>
 
-<script src="config.js?v=1.6"></script>
+<script src="config.js?v=1.7"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=1.6"></script>
+<script src="app.js?v=1.7"></script>
 </body>
 </html>
