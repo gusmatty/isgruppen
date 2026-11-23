@@ -192,14 +192,24 @@
       <div class="cnt">${st === "past" ? "Klart" : countText(s)}</div></div>`;
   }
 
+  const SHIFT_MIME = "application/x-isg-shift";
   function wireCards(root) {
+    const canDragShifts = isWeekView() && isAdmin();
     root.querySelectorAll(".card").forEach((c) => {
       const id = Number(c.dataset.id);
       c.onclick = () => openShift(id);
+      if (canDragShifts) {
+        c.draggable = true;
+        c.title = "Dra till ett annat pass för att kopiera passets inställningar dit";
+        c.addEventListener("dragstart", (e) => { e.dataTransfer.setData(SHIFT_MIME, String(id)); e.dataTransfer.effectAllowed = "copy"; c.classList.add("dragging"); });
+        c.addEventListener("dragend", () => c.classList.remove("dragging"));
+      }
       c.addEventListener("dragover", (e) => { e.preventDefault(); c.classList.add("drop"); });
       c.addEventListener("dragleave", () => c.classList.remove("drop"));
       c.addEventListener("drop", async (e) => {
         e.preventDefault(); c.classList.remove("drop");
+        const srcId = Number(e.dataTransfer.getData(SHIFT_MIME));
+        if (srcId) { if (srcId !== id) copyShiftOnto(srcId, id); return; }
         const pid = Number(e.dataTransfer.getData("text/plain"));
         if (!pid) return;
         try { await rpc("book_shift", { p_shift: id, p_person: pid, p_actor: actor() }); toast(personName(pid) + " bokad ✓"); load(); } catch {}
@@ -232,6 +242,32 @@
     $("#moreBtn").onclick = () => { S.listDays += 14; load(); };
   }
 
+  // Kopiera ett pass inställningar till ett annat pass, men behåll målpassets datum
+  async function copyShiftOnto(srcId, dstId) {
+    const src = S.shifts.find((x) => x.id === srcId), dst = S.shifts.find((x) => x.id === dstId);
+    if (!src || !dst) return;
+    if (dst.end <= new Date() && !isAdmin()) return toast("Passet har passerat och är låst.", true);
+    const start = new Date(dst.start);
+    start.setHours(src.start.getHours(), src.start.getMinutes(), 0, 0);
+    const end = new Date(start.getTime() + (src.end - src.start));
+    const n = dst.bookings.length;
+    const msg = `Ändra ${shortDay(dst.start)} ${timeRange(dst)} ${dst.title}\n` +
+      `till ${shortDay(start)} ${hm(start)}–${hm(end)} ${src.title}?\n\n` +
+      `Rubrik, arbete, plats, tider, antal, jour och beskrivning kopieras från ${shortDay(src.start)}.` +
+      (n ? `\n${n} bokad(e) ligger kvar på passet.` : "");
+    if (!confirm(msg)) return;
+    try {
+      await rpc("update_shift", {
+        p_id: dstId, p_title: src.title, p_work_type: src.work_type, p_place: src.place,
+        p_start: start.toISOString(), p_end: end.toISOString(),
+        p_min: src.min_people, p_max: Math.max(src.max_people, n), p_jour: src.is_jour,
+        p_desc: src.description || "", p_actor: actor(), p_pin: S.pin,
+      });
+      toast("Passet uppdaterat ✓");
+      load();
+    } catch {}
+  }
+
   function renderWeek() {
     const main = $("#main");
     const todayKey = dayKey(new Date());
@@ -245,7 +281,7 @@
     }
     main.innerHTML = `<div class="weekwrap">
       <aside class="names"><h3>Namn</h3>${chips}<button class="chip" id="addNameChip" style="background:#fff;border:1px dashed var(--line)">+ Namn</button>
-      <p class="hint">Dra ett namn till ett pass för att boka.</p></aside>
+      <p class="hint">Dra ett namn till ett pass för att boka.${isAdmin() ? "<br><br>Admin: dra ett pass till ett annat pass för att kopiera inställningarna dit (datumet behålls)." : ""}</p></aside>
       <div class="week">${cols}</div></div>`;
     main.querySelectorAll(".chip[data-pid]").forEach((c) => {
       c.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", c.dataset.pid); e.dataTransfer.effectAllowed = "copy"; });
