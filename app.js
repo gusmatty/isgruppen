@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "1.9 (fyll på nedåt)";
+  const APP_VERSION = "1.10 (mallkort)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -415,6 +415,31 @@
     } catch {}
   }
 
+  // Kopiera ett pass till en annan dag (samma klockslag och egenskaper, inga bokningar)
+  async function copyShiftToDate(srcId, dateKey) {
+    const src = S.shifts.find((x) => x.id === srcId);
+    if (!src) return;
+    const [y, mo, da] = dateKey.split("-").map(Number);
+    const start = new Date(src.start); start.setFullYear(y, mo - 1, da);
+    const end = new Date(start.getTime() + (src.end - src.start));
+    if (end <= new Date()) return toast("Den tiden har redan passerat.", true);
+    const clash = S.shifts.find((x) => x.start < end && x.end > start);
+    const msg = `Kopiera ${src.title} ${timeRange(src)}\ntill ${dayLabel(start)} ${hm(start)}–${hm(end)}?\n\n` +
+      `Rubrik, arbete, plats, antal, jour och beskrivning följer med. Inga bokningar.` +
+      (clash ? `\n\nObs: krockar med ${clash.title} ${timeRange(clash)} samma dag.` : "");
+    if (!confirm(msg)) return;
+    try {
+      await rpc("create_shift", {
+        p_title: src.title, p_work_type: src.work_type, p_place: src.place,
+        p_start: start.toISOString(), p_end: end.toISOString(),
+        p_min: src.min_people, p_max: src.max_people, p_jour: src.is_jour,
+        p_desc: src.description || "", p_actor: actor(),
+      });
+      toast("Passet kopierat ✓ – dra pilen under det för att fylla på dagen");
+      load();
+    } catch {}
+  }
+
   function renderWeek() {
     const main = $("#main");
     const todayKey = dayKey(new Date());
@@ -424,17 +449,31 @@
     for (let i = 0; i < 7; i++) {
       const d = addDays(S.weekStart, i), k = dayKey(d);
       const items = S.shifts.filter((s) => dayKey(s.start) === k);
-      cols += `<div class="wcol"><div class="whead${k === todayKey ? " today" : ""}">${shortDay(d)}${wxDay(d)}</div>${items.map((s) => cardHtml(s, true)).join("") || ""}</div>`;
+      const slot = isAdmin() && k >= todayKey
+        ? `<div class="slot${items.length ? "" : " empty"}" data-date="${k}">${items.length ? "+ Släpp pass här" : "Dra ett pass hit för att kopiera det till den här dagen"}</div>` : "";
+      cols += `<div class="wcol"><div class="whead${k === todayKey ? " today" : ""}">${shortDay(d)}${wxDay(d)}</div>${items.map((s) => cardHtml(s, true)).join("") || ""}${slot}</div>`;
     }
     main.innerHTML = `<div class="weekwrap">
       <aside class="names"><h3>Namn</h3>${chips}<button class="chip add" id="addNameChip">+ Namn</button>
-      <p class="hint">Dra ett namn till ett pass för att boka.${isAdmin() ? "<br><br>Admin: dra ett pass till ett annat pass för att kopiera inställningarna dit (datumet behålls)." : ""}</p></aside>
+      <p class="hint">Dra ett namn till ett pass för att boka.${isAdmin() ? "<br><br>Admin:<br>• Dra ett pass till ett annat pass för att kopiera inställningarna dit (datumet behålls).<br>• Dra ett pass till ett streckat mallkort för att kopiera det till den dagen.<br>• Dra pilen under ett pass nedåt för att fylla på fler pass." : ""}</p></aside>
       <div class="week">${cols}</div></div>`;
     main.querySelectorAll(".chip[data-pid]").forEach((c) => {
       c.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", c.dataset.pid); e.dataTransfer.effectAllowed = "copy"; });
     });
     $("#addNameChip").onclick = () => openWho(true);
     wireCards(main);
+    main.querySelectorAll(".slot").forEach((sl) => {
+      const isShift = (e) => Array.from(e.dataTransfer?.types || []).includes(SHIFT_MIME);
+      sl.addEventListener("dragover", (e) => { if (!isShift(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; sl.classList.add("over"); });
+      sl.addEventListener("dragleave", () => sl.classList.remove("over"));
+      sl.addEventListener("drop", (e) => {
+        sl.classList.remove("over");
+        const srcId = Number(e.dataTransfer.getData(SHIFT_MIME));
+        if (!srcId) return;
+        e.preventDefault();
+        copyShiftToDate(srcId, sl.dataset.date);
+      });
+    });
   }
 
   // ---------- Modal ----------
@@ -896,6 +935,7 @@
           <li><b>Filter:</b> <i>Mina pass</i> visar bara dina, <i>Saknar folk</i> visar var det behövs folk.</li>
           <li><b>Logg:</b> visar vem som bokat, avbokat och ändrat vad.</li>
           <li><b>Tema:</b> knappen med måne/sol byter mellan ljust och mörkt.</li>
+          <li><b>Admin – kopiera till annan dag:</b> i veckovyn finns ett streckat mallkort under varje dag. Dra ett pass dit så skapas en kopia den dagen, med samma tider.</li>
           <li><b>Admin – fyll på nedåt:</b> dra pilen ${svg("filldown", 14)} längst ner på ett pass nedåt för att skapa fler pass direkt efter, med samma längd. Du bekräftar längd och antal innan något skapas.</li>
           <li><b>Hänglåset</b> ${svg("lock", 14)} är för admin (kräver PIN-kod) och behövs inte för att boka.</li>
         </ul>
