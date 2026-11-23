@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "1.8 (ikon)";
+  const APP_VERSION = "1.9 (fyll på nedåt)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -162,6 +162,7 @@
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+    filldown: '<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>',
     dots: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
   };
   function svg(name, size = 16, cls = "") {
@@ -332,6 +333,7 @@
       <div class="c-mid"><b>${esc(s.title)}</b>${compact ? "" : `<span class="place">· ${esc(s.place)}</span>`}${extra}
         ${compact ? `${wx}<span class="place">· ${esc(s.place)}</span>` : `<span class="spacer"></span>${wx}`}</div>
       <div class="c-seats">${seatsHtml(s)}${compact ? pill : `<span class="c-names">${names || (s.is_jour ? "Ingen har jouren" : "Ingen bokad")}</span>`}</div>
+      ${isAdmin() && st !== "past" ? `<button class="fill-handle" type="button" aria-label="Fyll på med fler pass efter det här" title="Dra nedåt för att fylla på med fler pass">${svg("filldown", 14)}</button>` : ""}
     </div>`;
   }
 
@@ -341,10 +343,12 @@
     root.querySelectorAll(".card").forEach((c) => {
       const id = Number(c.dataset.id);
       c.onclick = () => openShift(id);
+      const fh = c.querySelector(".fill-handle");
+      if (fh) wireFillHandle(fh, c, id);
       if (canDragShifts) {
         c.draggable = true;
         c.title = "Dra till ett annat pass för att kopiera passets inställningar dit";
-        c.addEventListener("dragstart", (e) => { e.dataTransfer.setData(SHIFT_MIME, String(id)); e.dataTransfer.effectAllowed = "copy"; c.classList.add("dragging"); });
+        c.addEventListener("dragstart", (e) => { if (fillDragging) { e.preventDefault(); return; } e.dataTransfer.setData(SHIFT_MIME, String(id)); e.dataTransfer.effectAllowed = "copy"; c.classList.add("dragging"); });
         c.addEventListener("dragend", () => c.classList.remove("dragging"));
       }
       c.addEventListener("dragover", (e) => { e.preventDefault(); c.classList.add("drop"); });
@@ -542,6 +546,7 @@
         <section class="row">
           ${!locked ? `<button class="btn" id="calBtn">📅 Lägg i kalender</button><button class="btn" id="shareOne">📣 Dela</button>` : ""}
           <span class="spacer"></span>
+          ${isAdmin() && !locked ? `<button class="btn" id="fillBtn">${svg("filldown", 14)} Fyll på nedåt</button>` : ""}
           ${canEdit ? `<button class="btn" id="editBtn">Ändra</button><button class="btn danger" id="delBtn">Ta bort</button>` : ""}
         </section>`, draw);
 
@@ -562,6 +567,7 @@
       $("#shareOne", m)?.addEventListener("click", () => share(shiftShareText(s)));
       $("#shareThis", m)?.addEventListener("click", () => share(`Jag kan inte ta ${shortDay(s.start)} ${timeRange(s)} ${s.title} – någon som kan? (${countText(s)})\n${location.href.split("#")[0]}`));
       $("#editBtn", m)?.addEventListener("click", () => openShiftForm(s));
+      $("#fillBtn", m)?.addEventListener("click", () => openFillDown(s.id, 1));
       $("#delBtn", m)?.addEventListener("click", async () => {
         const n = s.bookings.length;
         if (!confirm(`Ta bort passet ${shortDay(s.start)} ${timeRange(s)} ${s.title}?${n ? `\n\n${n} person(er) är bokade och tas bort från passet.` : ""}`)) return;
@@ -687,6 +693,125 @@
   }
 
 
+
+  // ---------- Fyll på nedåt ----------
+  // Dra handtaget längst ner på ett pass nedåt: varje "kortlängd" = ett nytt pass direkt efter.
+  let fillDragging = false;
+  function wireFillHandle(fh, card, id) {
+    fh.addEventListener("click", (e) => { e.stopPropagation(); if (!fh._dragged) openFillDown(id, 1); fh._dragged = false; });
+    fh.addEventListener("pointerdown", (e) => {
+      e.stopPropagation(); e.preventDefault();
+      fillDragging = true; fh._dragged = false;
+      fh.setPointerCapture(e.pointerId);
+      const r = card.getBoundingClientRect();
+      const step = Math.max(60, r.height + 10);
+      const ghost = document.createElement("div");
+      ghost.className = "fill-ghost";
+      Object.assign(ghost.style, { left: r.left + "px", top: r.bottom + 4 + "px", width: r.width + "px", height: "0px" });
+      document.body.appendChild(ghost);
+      const startY = e.clientY;
+      let count = 0;
+      const move = (ev) => {
+        const dy = Math.max(0, ev.clientY - startY);
+        if (dy > 8) fh._dragged = true;
+        count = Math.min(12, Math.round(dy / step));
+        ghost.style.height = dy + "px";
+        ghost.textContent = count ? `+${count} pass` : "Dra längre…";
+      };
+      const up = () => {
+        fh.removeEventListener("pointermove", move);
+        fh.removeEventListener("pointerup", up);
+        fh.removeEventListener("pointercancel", up);
+        ghost.remove(); fillDragging = false;
+        if (fh._dragged && count > 0) openFillDown(id, count);
+      };
+      fh.addEventListener("pointermove", move);
+      fh.addEventListener("pointerup", up);
+      fh.addEventListener("pointercancel", up);
+    });
+  }
+
+  function overlaps(a0, a1, b0, b1) { return a0 < b1 && a1 > b0; }
+  function fillPlan(src, count, durMin, skipConflicts) {
+    const dayEnd = addDays(startOfDay(src.start), 1);
+    const others = S.shifts.filter((x) => x.id !== src.id);
+    const plan = [];
+    let t = new Date(src.end);
+    for (let i = 0; i < count; i++) {
+      if (t >= dayEnd) break;
+      let e = new Date(t.getTime() + durMin * 60000), cut = false;
+      if (e > dayEnd) { e = new Date(dayEnd); cut = true; }
+      const clash = others.find((x) => overlaps(t, e, x.start, x.end));
+      plan.push({ start: new Date(t), end: e, cut, clash, skip: !!clash && skipConflicts });
+      t = e;
+    }
+    return plan;
+  }
+
+  function openFillDown(id, count = 1) {
+    const src = S.shifts.find((x) => x.id === id);
+    if (!src) return;
+    const dur0 = Math.round((src.end - src.start) / 60000);
+    const dayEnd = addDays(startOfDay(src.start), 1);
+    if (src.end >= dayEnd) return toast("Passet slutar vid midnatt – det finns ingen plats efter det samma dag.", true);
+    const m = modal(`<h2>Fyll på nedåt</h2>
+      <div class="meta">Nya pass direkt efter <b>${shortDay(src.start)} ${timeRange(src)} ${esc(src.title)}</b>.
+        Rubrik, arbete, plats, antal, jour och beskrivning kopieras. Inga bokningar följer med.</div>
+      <div class="grid2">
+        <div><label for="fdCount">Antal nya pass</label><input type="number" id="fdCount" min="1" max="12" value="${count}"></div>
+        <div><label>Längd per pass</label><div class="row" style="flex-wrap:nowrap">
+          <input type="number" id="fdH" min="0" max="24" value="${Math.floor(dur0 / 60)}" aria-label="Timmar" style="width:70px"> <span>tim</span>
+          <select id="fdM" aria-label="Minuter" style="width:80px">${[0, 15, 30, 45].map((x) => `<option ${dur0 % 60 === x ? "selected" : ""}>${x}</option>`).join("")}</select> <span>min</span>
+        </div></div>
+      </div>
+      <p class="gnote">Förvalt: samma längd som passet du drog (${Math.floor(dur0 / 60)} h${dur0 % 60 ? " " + (dur0 % 60) + " min" : ""}).</p>
+      <label class="check"><input type="checkbox" id="fdSkip" checked> Hoppa över tider som krockar med pass som redan finns</label>
+      <section><h4>Det här skapas</h4><div id="fdList"></div></section>
+      <button class="btn primary big" id="fdGo">Skapa pass</button>`, null, true);
+    const read = () => {
+      const c = Math.max(1, Math.min(12, Number($("#fdCount", m).value) || 1));
+      const d = (Number($("#fdH", m).value) || 0) * 60 + Number($("#fdM", m).value);
+      return { c, d, skip: $("#fdSkip", m).checked };
+    };
+    let plan = [];
+    const draw = () => {
+      const { c, d, skip } = read();
+      if (d < 15) { $("#fdList", m).innerHTML = `<div class="meta">Längden måste vara minst 15 minuter.</div>`; $("#fdGo", m).disabled = true; return; }
+      plan = fillPlan(src, c, d, skip);
+      const make = plan.filter((p) => !p.skip);
+      $("#fdList", m).innerHTML = plan.map((p) => `<div class="fd-row${p.skip ? " skip" : ""}">
+          <b class="num">${hm(p.start)}–${hm(p.end)}</b> ${esc(src.title)}
+          ${p.skip ? `<span class="gnote">hoppas över – krockar med ${esc(p.clash.title)} ${timeRange(p.clash)}</span>`
+                   : p.clash ? `<span class="gnote">krockar med ${esc(p.clash.title)} ${timeRange(p.clash)}</span>` : ""}
+          ${p.cut ? `<span class="gnote">förkortat – slutar vid midnatt</span>` : ""}</div>`).join("")
+        + (plan.length < c ? `<div class="gnote">Fick bara plats med ${plan.length} pass före midnatt.</div>` : "");
+      $("#fdGo", m).disabled = !make.length;
+      $("#fdGo", m).textContent = make.length ? `Skapa ${make.length} pass` : "Inget att skapa";
+    };
+    ["#fdCount", "#fdH", "#fdM", "#fdSkip"].forEach((q) => $(q, m).addEventListener("input", draw));
+    $("#fdM", m).addEventListener("change", draw);
+    draw();
+    $("#fdGo", m).onclick = async () => {
+      const make = plan.filter((p) => !p.skip);
+      $("#fdGo", m).disabled = true;
+      let ok = 0;
+      for (const p of make) {
+        try {
+          await rpc("create_shift", {
+            p_title: src.title, p_work_type: src.work_type, p_place: src.place,
+            p_start: p.start.toISOString(), p_end: p.end.toISOString(),
+            p_min: src.min_people, p_max: src.max_people, p_jour: src.is_jour,
+            p_desc: src.description || "", p_actor: actor(),
+          });
+          ok++;
+        } catch { break; }
+      }
+      closeModal();
+      if (ok) toast(`${ok} pass skapade ✓`);
+      load();
+    };
+  }
+
   // ---------- Guide ----------
   function detectDevice() {
     const ua = navigator.userAgent || "";
@@ -771,6 +896,7 @@
           <li><b>Filter:</b> <i>Mina pass</i> visar bara dina, <i>Saknar folk</i> visar var det behövs folk.</li>
           <li><b>Logg:</b> visar vem som bokat, avbokat och ändrat vad.</li>
           <li><b>Tema:</b> knappen med måne/sol byter mellan ljust och mörkt.</li>
+          <li><b>Admin – fyll på nedåt:</b> dra pilen ${svg("filldown", 14)} längst ner på ett pass nedåt för att skapa fler pass direkt efter, med samma längd. Du bekräftar längd och antal innan något skapas.</li>
           <li><b>Hänglåset</b> ${svg("lock", 14)} är för admin (kräver PIN-kod) och behövs inte för att boka.</li>
         </ul>
       </section>`);
