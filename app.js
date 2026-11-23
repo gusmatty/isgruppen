@@ -255,19 +255,25 @@
   }
 
   // ---------- Modal ----------
-  let openModalFn = null;
-  function modal(html, refresher = null) {
+  let openModalFn = null, modalLocked = false, modalDirty = false;
+  // locked = formulär: stängs inte av klick utanför eller Esc, och × frågar om osparade ändringar
+  function modal(html, refresher = null, locked = false) {
     const root = $("#modalRoot");
     root.innerHTML = `<div class="overlay"><div class="modal"><button class="x" aria-label="Stäng">×</button>${html}</div></div>`;
     const ov = $(".overlay", root);
-    ov.addEventListener("click", (e) => { if (e.target === ov) closeModal(); });
-    $(".x", root).onclick = closeModal;
+    modalLocked = locked; modalDirty = false;
+    ov.addEventListener("click", (e) => { if (e.target === ov && !modalLocked) closeModal(); });
+    if (locked) ov.addEventListener("input", () => { modalDirty = true; });
+    $(".x", root).onclick = () => {
+      if (modalLocked && modalDirty && !confirm("Stäng utan att spara ändringarna?")) return;
+      closeModal();
+    };
     openModalFn = refresher;
     return $(".modal", root);
   }
-  function closeModal() { $("#modalRoot").innerHTML = ""; openModalFn = null; }
-  function refreshOpenModal() { if (openModalFn) openModalFn(); }
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+  function closeModal() { $("#modalRoot").innerHTML = ""; openModalFn = null; modalLocked = false; modalDirty = false; }
+  function refreshOpenModal() { if (openModalFn && !modalLocked) openModalFn(); }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modalLocked) closeModal(); });
 
   // ---------- Vem är du ----------
   function openWho(focusAdd = false) {
@@ -415,7 +421,7 @@
       <label class="check"><input type="checkbox" id="fJour" ${s?.is_jour ? "checked" : ""}> Snöjour – röj om det snöar</label>
       <label>Beskrivning (valfritt)</label><textarea id="fDesc" maxlength="500" placeholder="T.ex. Bara om det snöat mer än 5 cm">${esc(s?.description || "")}</textarea>
       ${isNew ? `<label class="check"><input type="checkbox" id="fBookMe" ${me() ? "checked" : "disabled"}> Boka mig direkt${me() ? "" : " (välj vem du är först)"}</label>` : ""}
-      <div style="margin-top:14px"><button class="btn primary big" id="fSave">${isNew ? "Lägg upp pass" : "Spara ändringar"}</button></div>`);
+      <div style="margin-top:14px"><button class="btn primary big" id="fSave">${isNew ? "Lägg upp pass" : "Spara ändringar"}</button></div>`, null, true);
 
     const applyDefaults = () => {
       const [mn, mx] = WORK_TYPES[$("#fType", m).value] || [1, 2];
