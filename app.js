@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "1.3 (väder)";
+  const APP_VERSION = "1.4 (väder)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -156,19 +156,51 @@
     if (code <= 10) return "🌦️"; if (code === 11 || code === 21) return "⛈️"; if (code <= 14) return "🌨️";
     if (code <= 17) return "🌨️"; if (code <= 20) return "🌧️"; if (code <= 24) return "🌨️"; return "❄️";
   }
+  // WMO-väderkod (Open-Meteo) → ungefärlig SMHI-symbolkod
+  function wmoToSym(c) {
+    if (c === 0) return 1; if (c === 1) return 2; if (c === 2) return 3; if (c === 3) return 6;
+    if (c === 45 || c === 48) return 7;
+    if (c >= 51 && c <= 55) return 18; if (c === 56 || c === 57 || c === 66 || c === 67) return 22;
+    if (c === 61) return 18; if (c === 63) return 19; if (c === 65) return 20;
+    if (c === 71 || c === 77) return 25; if (c === 73) return 26; if (c === 75) return 27;
+    if (c === 80) return 8; if (c === 81) return 9; if (c === 82) return 10;
+    if (c === 85) return 15; if (c === 86) return 17; if (c >= 95) return 11;
+    return 4;
+  }
+  async function fetchSmhi() {
+    const r = await fetch(WX_URL);
+    if (!r.ok) throw new Error("SMHI " + r.status);
+    const j = await r.json();
+    return (j.timeSeries || []).map((x) => ({
+      t: new Date(x.time).getTime(), temp: x.data.air_temperature, sym: x.data.symbol_code,
+      pr: x.data.precipitation_amount_mean || 0, wind: x.data.wind_speed,
+    }));
+  }
+  async function fetchOpenMeteo() {
+    const u = "https://api.open-meteo.com/v1/forecast?latitude=60.486&longitude=15.42" +
+      "&hourly=temperature_2m,weather_code,precipitation,wind_speed_10m&wind_speed_unit=ms&timezone=UTC&forecast_days=10";
+    const r = await fetch(u);
+    if (!r.ok) throw new Error("Open-Meteo " + r.status);
+    const h = (await r.json()).hourly;
+    // Open-Meteo anger nederbörd för timmen FÖRE tidpunkten, precis som SMHI → samma tolkning
+    return h.time.map((t, i) => ({
+      t: new Date(t + "Z").getTime(), temp: h.temperature_2m[i], sym: wmoToSym(h.weather_code[i]),
+      pr: h.precipitation[i] || 0, wind: h.wind_speed_10m[i],
+    }));
+  }
   async function loadWeather() {
     if (Date.now() - WX.fetched < 30 * 60000) return;
-    try {
-      const r = await fetch(WX_URL);
-      if (!r.ok) return;
-      const j = await r.json();
-      WX.series = (j.timeSeries || []).map((x) => ({
-        t: new Date(x.time).getTime(), temp: x.data.air_temperature, sym: x.data.symbol_code,
-        pr: x.data.precipitation_amount_mean || 0, wind: x.data.wind_speed,
-      })).filter((x) => x.temp !== undefined && x.temp > -90);
-      WX.fetched = Date.now();
-      render(); refreshOpenModal();
-    } catch (e) { console.warn("Väder kunde inte hämtas", e); }
+    let series = null, source = "";
+    try { series = await fetchSmhi(); source = "SMHI (CC BY 4.0)"; }
+    catch (e) {
+      console.warn("SMHI gick inte att hämta, provar Open-Meteo", e);
+      try { series = await fetchOpenMeteo(); source = "Open-Meteo.com (CC BY 4.0)"; }
+      catch (e2) { console.warn("Väder kunde inte hämtas", e2); return; }
+    }
+    WX.series = series.filter((x) => x.temp !== undefined && x.temp !== null && x.temp > -90);
+    WX.fetched = Date.now();
+    const src = document.getElementById("wxsrc"); if (src) src.textContent = "Väderprognos: " + source;
+    render(); refreshOpenModal();
   }
   // Prognospunkter som täcker intervallet [from, to). Glesa steg längre fram: ta närmaste punkt.
   function wxPoints(from, to) {
@@ -194,7 +226,7 @@
     if (s.end <= new Date()) return "";
     const w = wxSummary(wxPoints(s.start, s.end));
     if (!w) return "";
-    return `<span class="wx${w.snow ? " snow" : ""}" title="SMHI-prognos">${w.icon} ${tempTxt(w)}${w.snow ? " snö" : ""}</span>`;
+    return `<span class="wx${w.snow ? " snow" : ""}" title="Väderprognos">${w.icon} ${tempTxt(w)}${w.snow ? " snö" : ""}</span>`;
   }
   function wxDay(d) {
     const from = startOfDay(d), to = addDays(from, 1);
@@ -206,7 +238,7 @@
   function wxDetail(s) {
     const pts = wxPoints(s.start, s.end);
     if (s.end <= new Date() || !pts.length) return "";
-    return `<section><h4>Väder under passet (SMHI)</h4><div class="wxrow">${pts.map((p) =>
+    return `<section><h4>Väder under passet</h4><div class="wxrow">${pts.map((p) =>
       `<span><b>${hm(new Date(p.t))}</b><br>${wxIcon(p.sym)} ${Math.round(p.temp)}°<br><small>${Math.round(p.wind)} m/s${p.pr >= 0.1 ? ` · ${p.pr.toFixed(1).replace(".", ",")} mm` : ""}</small></span>`).join("")}</div></section>`;
   }
 
