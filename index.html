@@ -40,6 +40,8 @@
     --alert-bg: #FFF6E0; --alert-line: #F3D995;
     --overlay: rgba(10,25,35,.5);
     --chip-bg: #E3EDF5; --chip-fg: #0B3D5C;
+    --pill-bg: #EEF2F6; --pill-fg: #0F2132;
+    --dot-miss: #C2410C; --dot-ok: #15803D; --dot-full: #64748B; --dot-jour: #4338CA;
     color-scheme: light;
   }
   /* ---------- Tema: mörkt ---------- */
@@ -60,6 +62,8 @@
     --alert-bg: #33290F; --alert-line: #5E4A16;
     --overlay: rgba(0,0,0,.6);
     --chip-bg: #1B3042; --chip-fg: #BFE3FD;
+    --pill-bg: #22374A; --pill-fg: #E8EFF4;
+    --dot-miss: #FB923C; --dot-ok: #4ADE80; --dot-full: #94A3B8; --dot-jour: #A5B4FC;
     color-scheme: dark;
   }
 
@@ -109,12 +113,15 @@
   .seat.filled { background: var(--seat-fill); border: 2px solid var(--seat-fill); color: var(--seat-fill-fg); }
   .st-red  .seat.req { border-color: var(--miss-ring); }
   .st-jour .seat.req { border-color: var(--jour-ring); }
-  .pill { border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; flex: none; }
-  .st-red .pill   { background: var(--miss-bg); color: var(--miss-fg); }
-  .st-green .pill { background: var(--ok-bg);   color: var(--ok-fg); }
-  .st-full .pill  { background: var(--full-bg); color: var(--full-fg); }
-  .st-jour .pill  { background: var(--jour-bg); color: var(--jour-fg); }
-  .st-past .pill  { background: var(--full-bg); color: var(--full-fg); }
+  /* Statusmärke: neutral pill + färgad prick (samma i båda teman) */
+  .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700;
+    white-space: nowrap; flex: none; background: var(--pill-bg); color: var(--pill-fg); --dot: var(--dot-full); }
+  .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
+  .st-red .pill   { --dot: var(--dot-miss); }
+  .st-green .pill { --dot: var(--dot-ok); }
+  .st-full .pill  { --dot: var(--dot-full); }
+  .st-jour .pill  { --dot: var(--dot-jour); }
+  .st-past .pill  { --dot: var(--dot-full); }
   .card.st-past { opacity: .6; }
   .card.mine  { box-shadow: 0 0 0 2px var(--mine-ring), var(--card-shadow); }
   .card.drop  { outline: 3px dashed var(--brand2); outline-offset: 2px; }
@@ -185,7 +192,7 @@
   [data-theme=dark] .toast { background: #E8EFF4; color: #0B141B; }
   .toast.err, [data-theme=dark] .toast.err { background: #B91C1C; color: #fff; }
   .legend { display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; padding: 0 14px; }
-  .legend span { border-radius: 999px; padding: 2px 8px; font-weight: 700; }
+  .legend .pill { font-size: 11px; padding: 2px 8px; }
   .wxday { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--muted); }
   .whead .wxday { display: flex; font-size: 12px; margin-top: 2px; }
   .wxrow { display: flex; gap: 8px; overflow-x: auto; }
@@ -206,18 +213,18 @@
 </header>
 <div class="toolbar" id="toolbar"></div>
 <div class="legend">
-  <span style="background:var(--miss-bg);color:var(--miss-fg)">Saknar folk</span>
-  <span style="background:var(--ok-bg);color:var(--ok-fg)">Bemannat</span>
-  <span style="background:var(--full-bg);color:var(--full-fg)">Fullt</span>
-  <span style="background:var(--jour-bg);color:var(--jour-fg)">Snöjour</span>
+  <span class="st-red"><span class="pill">Saknar folk</span></span>
+  <span class="st-green"><span class="pill">Bemannat</span></span>
+  <span class="st-full"><span class="pill">Fullt</span></span>
+  <span class="st-jour"><span class="pill">Snöjour</span></span>
 </div>
 <main id="main"><div class="empty">Laddar…</div></main>
 <div class="credit"><span id="wxsrc">Väderprognos laddas…</span> · <span id="ver">Gammal version – ladda om</span></div>
 <button class="fab" id="newBtn">+ Nytt pass</button>
 <div id="modalRoot"></div>
 
-<script src="config.js?v=1.5"></script>
+<script src="config.js?v=1.6"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=1.5"></script>
+<script src="app.js?v=1.6"></script>
 </body>
 </html>

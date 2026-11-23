@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "1.5 (ny design)";
+  const APP_VERSION = "1.6 (statusmärken)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
