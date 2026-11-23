@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "1.10 (mallkort)";
+  const APP_VERSION = "2.0 (veckomallar)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -162,6 +162,8 @@
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+    template: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
     filldown: '<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>',
     dots: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
   };
@@ -293,6 +295,7 @@
       <span class="spacer"></span>
       <button class="btn" id="shareBtn">📣 Dela lediga pass</button>
       <button class="btn" id="logBtn">Logg</button>
+      ${isAdmin() ? `<button class="btn" id="tplBtn">${svg("template", 14)} Mallar</button>` : ""}
       <div class="seg viewseg"><button data-v="list" class="${!week ? "on" : ""}">Lista</button><button data-v="week" class="${week ? "on" : ""}">Vecka</button></div>`;
     tb.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { S.filter = b.dataset.f; store.set("isg_filter", S.filter); render(); });
     tb.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { S.view = b.dataset.v; store.set("isg_view", S.view); render(); });
@@ -303,6 +306,7 @@
     });
     $("#shareBtn").onclick = shareOpenShifts;
     $("#logBtn").onclick = openLog;
+    $("#tplBtn")?.addEventListener("click", () => openTemplates());
   }
 
   const initials = (name) => {
@@ -851,6 +855,200 @@
     };
   }
 
+
+  // ---------- Veckomallar (admin) ----------
+  const WD_NAMES = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"];
+  function weekOptions(selectedKey, from = -2, to = 30) {
+    const base = startOfWeek(new Date());
+    let h = "";
+    for (let i = from; i <= to; i++) {
+      const mon = addDays(base, 7 * i), sun = addDays(mon, 6), k = dayKey(mon);
+      h += `<option value="${k}" ${k === selectedKey ? "selected" : ""}>v.${isoWeek(mon)} · ${mon.getDate()} ${MONTHS[mon.getMonth()]} – ${sun.getDate()} ${MONTHS[sun.getMonth()]}${i === 0 ? " (denna vecka)" : ""}</option>`;
+    }
+    return h;
+  }
+  const parseDayKey = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const durTxt = (min) => `${Math.floor(min / 60)} h${min % 60 ? " " + (min % 60) + " min" : ""}`;
+  function itemEnd(it) {
+    const [h, m] = it.start_time.split(":").map(Number);
+    const e = h * 60 + m + it.duration_min;
+    return `${pad2(Math.floor(e / 60) % 24)}:${pad2(e % 60)}`;
+  }
+
+  async function fetchTemplates() {
+    const { data, error } = await sb.from("templates").select("*, template_items(*)").order("name");
+    if (error) throw error;
+    return data.map((t) => ({ ...t, items: (t.template_items || []).sort((a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time)) }));
+  }
+  async function fetchWeekShifts(mondayKey) {
+    const mon = parseDayKey(mondayKey);
+    const { data, error } = await sb.from("shifts").select("*").gte("start_at", mon.toISOString())
+      .lt("start_at", addDays(mon, 7).toISOString()).order("start_at");
+    if (error) throw error;
+    return data.map((x) => ({ ...x, start: new Date(x.start_at), end: new Date(x.end_at) }));
+  }
+
+  async function openTemplates() {
+    let tpls;
+    try { tpls = await fetchTemplates(); }
+    catch (e) {
+      modal(`<h2>Veckomallar</h2><div class="alert">Mallfunktionen är inte installerad i databasen än.
+        Kör filen <b>supabase-v2-mallar.sql</b> i Supabase → SQL Editor (se guiden i mappen).</div>`);
+      return;
+    }
+    const curKey = dayKey(isWeekView() ? S.weekStart : startOfWeek(new Date()));
+    const m = modal(`<h2>${svg("template", 20)} Veckomallar</h2>
+      <div class="meta">Spara en vecka som mall och lägg ut den på kommande veckor. Utlagda pass blir vanliga pass som kan ändras var för sig.</div>
+
+      <section><h4>Mallar</h4>
+        ${tpls.length ? tpls.map((t) => `<div class="tpl-row">
+            <div><b>${esc(t.name)}</b><div class="gnote">${t.items.length} pass · ändrad ${shortDay(new Date(t.updated_at))}</div></div>
+            <span class="spacer"></span>
+            <button class="btn primary" data-apply="${t.id}">Lägg ut</button>
+            <button class="btn" data-show="${t.id}">Visa</button>
+          </div>`).join("") : `<div class="meta">Inga mallar än. Spara en vecka som mall nedan.</div>`}
+      </section>
+
+      <section><h4>Spara en vecka som mall</h4>
+        <label for="svWeek">Vecka</label><select id="svWeek">${weekOptions(curKey, -8, 30)}</select>
+        <div id="svInfo" class="gnote"></div>
+        <label for="svTarget">Spara som</label>
+        <select id="svTarget"><option value="">Ny mall</option>${tpls.map((t) => `<option value="${t.id}">Ersätt: ${esc(t.name)}</option>`).join("")}</select>
+        <div id="svNameWrap"><label for="svName">Namn på mallen</label><input type="text" id="svName" maxlength="60" placeholder="T.ex. Normalvecka"></div>
+        <div style="margin-top:10px"><button class="btn primary" id="svGo">Spara som mall</button></div>
+      </section>
+
+      <section><h4>Rensa veckor</h4>
+        <div class="grid2">
+          <div><label for="clWeek">Från vecka</label><select id="clWeek">${weekOptions(curKey, 0, 30)}</select></div>
+          <div><label for="clN">Antal veckor</label><input type="number" id="clN" min="1" max="26" value="1"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="clBooked"> Ta bort även pass där någon är bokad</label>
+        <p class="gnote">Pass som redan har passerat rörs aldrig.</p>
+        <div style="margin-top:6px"><button class="btn danger" id="clGo">${svg("trash", 14)} Rensa</button></div>
+      </section>`);
+
+    m.querySelectorAll("[data-apply]").forEach((b) => b.onclick = () => openApplyTemplate(tpls.find((t) => t.id === Number(b.dataset.apply))));
+    m.querySelectorAll("[data-show]").forEach((b) => b.onclick = () => openTemplateView(Number(b.dataset.show)));
+
+    // Spara vecka som mall
+    let weekShifts = [];
+    const refreshInfo = async () => {
+      $("#svInfo", m).textContent = "Hämtar…";
+      try {
+        weekShifts = await fetchWeekShifts($("#svWeek", m).value);
+        $("#svInfo", m).textContent = weekShifts.length ? `${weekShifts.length} pass den veckan kommer med i mallen (inga bokningar).` : "Den veckan har inga pass.";
+      } catch { $("#svInfo", m).textContent = "Kunde inte hämta veckan."; }
+    };
+    $("#svWeek", m).onchange = refreshInfo;
+    $("#svTarget", m).onchange = () => {
+      const t = tpls.find((x) => x.id === Number($("#svTarget", m).value));
+      $("#svName", m).value = t ? t.name : "";
+    };
+    refreshInfo();
+    $("#svGo", m).onclick = async () => {
+      if (!weekShifts.length) return toast("Veckan har inga pass att spara.", true);
+      const replaceId = Number($("#svTarget", m).value) || null;
+      const name = $("#svName", m).value.trim();
+      if (!name) return toast("Ge mallen ett namn.", true);
+      if (replaceId && !confirm(`Ersätta innehållet i mallen "${name}" med ${weekShifts.length} pass från den valda veckan?`)) return;
+      const items = weekShifts.map((x) => ({
+        weekday: ((x.start.getDay() + 6) % 7) + 1, start_time: toTimeInput(x.start),
+        duration_min: Math.round((x.end - x.start) / 60000), title: x.title, work_type: x.work_type, place: x.place,
+        min_people: x.min_people, max_people: x.max_people, is_jour: x.is_jour, description: x.description || "",
+      }));
+      try {
+        await rpc("save_template", { p_name: name, p_items: items, p_replace_id: replaceId, p_pin: S.pin, p_actor: actor() });
+        toast(replaceId ? "Mallen uppdaterad ✓" : "Mallen sparad ✓");
+        openTemplates();
+      } catch {}
+    };
+
+    // Rensa veckor
+    $("#clGo", m).onclick = async () => {
+      const k = $("#clWeek", m).value, n = Math.max(1, Math.min(26, Number($("#clN", m).value) || 1));
+      const booked = $("#clBooked", m).checked;
+      const mon = parseDayKey(k);
+      if (!confirm(`Rensa ${n} vecka/veckor från v.${isoWeek(mon)}?\n\n${booked ? "ALLA kommande pass tas bort – även där någon är bokad." : "Obokade pass tas bort. Pass där någon är bokad ligger kvar."}`)) return;
+      try {
+        const r = await rpc("clear_weeks", { p_monday: k, p_weeks: n, p_include_booked: booked, p_pin: S.pin, p_actor: actor() });
+        toast(`${r.removed} pass borttagna${r.kept_booked ? ` · ${r.kept_booked} bokade ligger kvar` : ""}`);
+        load();
+      } catch {}
+    };
+  }
+
+  function openApplyTemplate(t) {
+    const nextKey = dayKey(addDays(isWeekView() ? S.weekStart : startOfWeek(new Date()), 7));
+    const m = modal(`<h2>Lägg ut "${esc(t.name)}"</h2>
+      <div class="meta">${t.items.length} pass per vecka.</div>
+      <div class="grid2">
+        <div><label for="apWeek">Från vecka</label><select id="apWeek">${weekOptions(nextKey, 0, 30)}</select></div>
+        <div><label for="apN">Antal veckor</label><input type="number" id="apN" min="1" max="26" value="4"></div>
+      </div>
+      <div id="apRange" class="gnote"></div>
+      <label class="check"><input type="radio" name="apMode" value="add" checked> Lägg till – hoppa över tider som krockar med pass som redan finns</label>
+      <label class="check"><input type="radio" name="apMode" value="replace"> Ersätt – ta först bort obokade pass i veckorna (bokade pass ligger kvar)</label>
+      <div style="margin-top:14px"><button class="btn primary big" id="apGo">Lägg ut mallen</button></div>`, null, true);
+    const range = () => {
+      const k = $("#apWeek", m).value, n = Math.max(1, Math.min(26, Number($("#apN", m).value) || 1));
+      const mon = parseDayKey(k), last = addDays(mon, 7 * n - 1);
+      $("#apRange", m).textContent = `v.${isoWeek(mon)}–v.${isoWeek(last)} (${mon.getDate()} ${MONTHS[mon.getMonth()]} – ${last.getDate()} ${MONTHS[last.getMonth()]}) · upp till ${t.items.length * n} pass`;
+      return { k, n };
+    };
+    $("#apWeek", m).onchange = range; $("#apN", m).oninput = range; range();
+    $("#apGo", m).onclick = async () => {
+      const { k, n } = range();
+      const replace = m.querySelector("input[name=apMode]:checked").value === "replace";
+      if (replace && !confirm("Obokade pass i de valda veckorna tas bort innan mallen läggs ut. Fortsätta?")) return;
+      $("#apGo", m).disabled = true;
+      try {
+        const r = await rpc("apply_template", { p_template: t.id, p_monday: k, p_weeks: n, p_replace: replace, p_pin: S.pin, p_actor: actor() });
+        closeModal();
+        toast(`${r.created} pass skapade${r.skipped ? ` · ${r.skipped} krockar hoppades över` : ""}${r.removed ? ` · ${r.removed} obokade ersattes` : ""}`);
+        if (isWeekView()) S.weekStart = parseDayKey(k);
+        load();
+      } catch { $("#apGo", m).disabled = false; }
+    };
+  }
+
+  async function openTemplateView(id) {
+    let t;
+    try { t = (await fetchTemplates()).find((x) => x.id === id); } catch { return toast("Kunde inte hämta mallen", true); }
+    if (!t) return openTemplates();
+    let rows = "", lastWd = 0;
+    for (const it of t.items) {
+      if (it.weekday !== lastWd) { rows += `<div class="day" style="margin:14px 0 4px">${WD_NAMES[it.weekday - 1]}</div>`; lastWd = it.weekday; }
+      rows += `<div class="fd-row"><b class="num">${it.start_time.slice(0, 5)}–${itemEnd(it)}</b> ${esc(it.title)}
+        <span class="gnote">${esc(it.place)} · ${it.min_people === it.max_people ? it.max_people : it.min_people + "–" + it.max_people} pers${it.is_jour ? " · JOUR" : ""}</span>
+        <span class="spacer"></span><button class="rm-item" data-del="${it.id}" aria-label="Ta bort ur mallen">${svg("trash", 15)}</button></div>`;
+    }
+    const m = modal(`<h2>Mall: ${esc(t.name)}</h2>
+      <div class="row"><input type="text" id="tvName" maxlength="60" value="${esc(t.name)}" style="flex:1"><button class="btn" id="tvRename">Byt namn</button></div>
+      <section><h4>${t.items.length} pass per vecka</h4>${rows || `<div class="meta">Mallen är tom.</div>`}</section>
+      <p class="gnote">Vill du ändra tider eller lägga till pass? Lägg ut mallen på en tom vecka, ändra i veckovyn
+        (dra, fyll på nedåt, kopiera till dag) och spara sedan veckan som mall igen med <i>Ersätt</i>.</p>
+      <section class="row">
+        <button class="btn" id="tvBack">‹ Tillbaka</button><span class="spacer"></span>
+        <button class="btn primary" id="tvApply">Lägg ut</button>
+        <button class="btn danger" id="tvDel">${svg("trash", 14)} Ta bort mallen</button>
+      </section>`);
+    $("#tvBack", m).onclick = () => openTemplates();
+    $("#tvApply", m).onclick = () => openApplyTemplate(t);
+    $("#tvRename", m).onclick = async () => {
+      const name = $("#tvName", m).value.trim(); if (!name) return;
+      try { await rpc("rename_template", { p_id: t.id, p_name: name, p_pin: S.pin, p_actor: actor() }); toast("Namnet ändrat ✓"); openTemplateView(t.id); } catch {}
+    };
+    $("#tvDel", m).onclick = async () => {
+      if (!confirm(`Ta bort mallen "${t.name}"? Pass som redan lagts ut påverkas inte.`)) return;
+      try { await rpc("delete_template", { p_id: t.id, p_pin: S.pin, p_actor: actor() }); toast("Mallen borttagen"); openTemplates(); } catch {}
+    };
+    m.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
+      try { await rpc("delete_template_item", { p_id: Number(b.dataset.del), p_pin: S.pin }); openTemplateView(t.id); } catch {}
+    });
+  }
+
   // ---------- Guide ----------
   function detectDevice() {
     const ua = navigator.userAgent || "";
@@ -935,6 +1133,7 @@
           <li><b>Filter:</b> <i>Mina pass</i> visar bara dina, <i>Saknar folk</i> visar var det behövs folk.</li>
           <li><b>Logg:</b> visar vem som bokat, avbokat och ändrat vad.</li>
           <li><b>Tema:</b> knappen med måne/sol byter mellan ljust och mörkt.</li>
+          <li><b>Admin – veckomallar:</b> knappen <i>Mallar</i> sparar en vecka som mall och lägger ut den på kommande veckor. Där kan du också rensa veckor.</li>
           <li><b>Admin – kopiera till annan dag:</b> i veckovyn finns ett streckat mallkort under varje dag. Dra ett pass dit så skapas en kopia den dagen, med samma tider.</li>
           <li><b>Admin – fyll på nedåt:</b> dra pilen ${svg("filldown", 14)} längst ner på ett pass nedåt för att skapa fler pass direkt efter, med samma längd. Du bekräftar längd och antal innan något skapas.</li>
           <li><b>Hänglåset</b> ${svg("lock", 14)} är för admin (kräver PIN-kod) och behövs inte för att boka.</li>

@@ -224,6 +224,10 @@
   .slot.empty { min-height: 150px; }
   .slot.over { border-color: var(--brand2); color: var(--brand2); background: color-mix(in srgb, var(--brand2) 8%, transparent); }
   .week .card { margin-bottom: 18px; }
+  /* Mallar */
+  .tpl-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .rm-item { border: 0; background: none; color: var(--danger); padding: 6px; border-radius: 8px; }
+  .btn svg { vertical-align: -2px; }
   /* Guide */
   .modal h2 svg { vertical-align: -3px; }
   details.g { border: 1px solid var(--line); border-radius: 12px; margin: 8px 0; background: var(--surface2); }
@@ -264,8 +268,8 @@
 <button class="fab" id="newBtn">+ Nytt pass</button>
 <div id="modalRoot"></div>
 
-<script src="config.js?v=1.10"></script>
+<script src="config.js?v=2.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=1.10"></script>
+<script src="app.js?v=2.0"></script>
 </body>
 </html>
