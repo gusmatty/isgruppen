@@ -228,6 +228,16 @@
   .tpl-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .rm-item { border: 0; background: none; color: var(--danger); padding: 6px; border-radius: 8px; }
   .btn svg { vertical-align: -2px; }
+  /* Typ av arbete */
+  .wt-head, .wt-row { display: grid; grid-template-columns: minmax(0, 1fr) 58px 58px auto; gap: 6px; align-items: center; }
+  .wt-head { font-size: 12px; color: var(--muted); padding: 0 2px 4px; }
+  .wt-row { padding: 4px 0; }
+  .wt-row input { padding: 8px; }
+  .wt-btns { display: flex; gap: 4px; align-items: center; }
+  .icon-btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; width: 34px; height: 36px; padding: 0; }
+  .icon-btn.danger { color: var(--danger); border-color: var(--danger-line); }
+  .icon-btn:disabled { opacity: .35; }
+  @media (max-width: 520px) { .wt-head { display: none; } .wt-row { grid-template-columns: minmax(0,1fr) 52px 52px; } .wt-btns { grid-column: 1 / -1; justify-content: flex-end; } }
   /* Guide */
   .modal h2 svg { vertical-align: -3px; }
   details.g { border: 1px solid var(--line); border-radius: 12px; margin: 8px 0; background: var(--surface2); }
@@ -268,8 +278,8 @@
 <button class="fab" id="newBtn">+ Nytt pass</button>
 <div id="modalRoot"></div>
 
-<script src="config.js?v=2.0"></script>
+<script src="config.js?v=2.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=2.0"></script>
+<script src="app.js?v=2.1"></script>
 </body>
 </html>

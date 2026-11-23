@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "2.0 (veckomallar)";
+  const APP_VERSION = "2.1 (arbetstyper)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -122,6 +122,7 @@
       ]);
       if (p.error || s.error) throw p.error || s.error;
       S.people = p.data;
+      await loadWorkTypes();
       S.shifts = s.data.map((x) => ({
         ...x, start: new Date(x.start_at), end: new Date(x.end_at),
         bookings: (x.bookings || []).sort((a, b) => a.created_at.localeCompare(b.created_at)),
@@ -262,6 +263,70 @@
     if (s.end <= new Date() || !pts.length) return "";
     return `<section><h4>Väder under passet</h4><div class="wxrow">${pts.map((p) =>
       `<span><b>${hm(new Date(p.t))}</b><br>${wxIcon(p.sym, 18)} ${Math.round(p.temp)}°<br><small>${Math.round(p.wind)} m/s${p.pr >= 0.1 ? ` · ${p.pr.toFixed(1).replace(".", ",")} mm` : ""}</small></span>`).join("")}</div></section>`;
+  }
+
+  // ---------- Typ av arbete (från databasen, annars inbyggd lista) ----------
+  S.workTypes = Object.entries(WORK_TYPES).map(([name, [mn, mx]], i) => ({ id: null, name, min_people: mn, max_people: mx, sort_order: i }));
+  S.workTypesFromDb = false;
+  async function loadWorkTypes() {
+    const { data, error } = await sb.from("work_types").select("*").eq("active", true).order("sort_order").order("id");
+    if (!error && data && data.length) { S.workTypes = data; S.workTypesFromDb = true; }
+  }
+  const wtDefaults = (name) => { const w = S.workTypes.find((x) => x.name === name); return w ? [w.min_people, w.max_people] : [1, 2]; };
+
+  function openWorkTypes() {
+    if (!S.workTypesFromDb) {
+      modal(`<h2>Typ av arbete</h2><div class="alert">Redigering är inte installerad i databasen än.
+        Kör filen <b>supabase-v3-arbetstyper.sql</b> i Supabase → SQL Editor → New query (se GUIDE.md).</div>`);
+      return;
+    }
+    const list = S.workTypes;
+    const m = modal(`<h2>Typ av arbete</h2>
+      <div class="meta">Valen som finns när man lägger upp ett pass. Minst/max är förval för antal personer.</div>
+      <section>
+        <div class="wt-head"><span>Namn</span><span>Minst</span><span>Max</span><span></span></div>
+        ${list.map((w, i) => `<div class="wt-row" data-id="${w.id}">
+          <input type="text" maxlength="40" value="${esc(w.name)}" aria-label="Namn">
+          <input type="number" min="1" max="10" value="${w.min_people}" aria-label="Minst antal">
+          <input type="number" min="1" max="10" value="${w.max_people}" aria-label="Max antal">
+          <div class="wt-btns">
+            <button class="icon-btn" data-up ${i === 0 ? "disabled" : ""} aria-label="Flytta upp">↑</button>
+            <button class="icon-btn" data-down ${i === list.length - 1 ? "disabled" : ""} aria-label="Flytta ner">↓</button>
+            <button class="btn" data-save>Spara</button>
+            <button class="icon-btn danger" data-del aria-label="Ta bort">${svg("trash", 15)}</button>
+          </div></div>`).join("")}
+      </section>
+      <section><h4>Lägg till ny typ</h4>
+        <div class="wt-row">
+          <input type="text" id="wtNew" maxlength="40" placeholder="T.ex. Isvård" aria-label="Namn på ny typ">
+          <input type="number" id="wtNewMin" min="1" max="10" value="1" aria-label="Minst antal">
+          <input type="number" id="wtNewMax" min="1" max="10" value="2" aria-label="Max antal">
+          <div class="wt-btns"><button class="btn primary" id="wtAdd">Lägg till</button></div>
+        </div>
+        <p class="gnote">Byter du namn eller tar bort en typ behåller befintliga pass och mallar sin gamla text.</p>
+      </section>`);
+    const again = async () => { await loadWorkTypes(); openWorkTypes(); };
+    m.querySelectorAll(".wt-row[data-id]").forEach((row) => {
+      const id = Number(row.dataset.id);
+      const [nameI, minI, maxI] = row.querySelectorAll("input");
+      row.querySelector("[data-save]").onclick = async () => {
+        const mn = Number(minI.value), mx = Number(maxI.value);
+        if (!(mn >= 1 && mx >= mn && mx <= 10)) return toast("Kontrollera minst/max (1–10, max ≥ minst)", true);
+        try { await rpc("save_work_type", { p_id: id, p_name: nameI.value, p_min: mn, p_max: mx, p_pin: S.pin, p_actor: actor() }); toast("Sparat ✓"); again(); } catch {}
+      };
+      row.querySelector("[data-del]").onclick = async () => {
+        if (!confirm(`Ta bort "${nameI.value}" ur listan? Befintliga pass påverkas inte.`)) return;
+        try { await rpc("delete_work_type", { p_id: id, p_pin: S.pin, p_actor: actor() }); toast("Borttagen"); again(); } catch {}
+      };
+      row.querySelector("[data-up]").onclick = async () => { try { await rpc("move_work_type", { p_id: id, p_dir: -1, p_pin: S.pin }); again(); } catch {} };
+      row.querySelector("[data-down]").onclick = async () => { try { await rpc("move_work_type", { p_id: id, p_dir: 1, p_pin: S.pin }); again(); } catch {} };
+    });
+    $("#wtAdd", m).onclick = async () => {
+      const name = $("#wtNew", m).value.trim(), mn = Number($("#wtNewMin", m).value), mx = Number($("#wtNewMax", m).value);
+      if (!name) return toast("Skriv ett namn", true);
+      if (!(mn >= 1 && mx >= mn && mx <= 10)) return toast("Kontrollera minst/max (1–10, max ≥ minst)", true);
+      try { await rpc("save_work_type", { p_id: null, p_name: name, p_min: mn, p_max: mx, p_pin: S.pin, p_actor: actor() }); toast(name + " tillagd ✓"); again(); } catch {}
+    };
   }
 
   // ---------- Rendering ----------
@@ -536,7 +601,13 @@
   function openAdmin() {
     if (isAdmin()) {
       const m = modal(`<h2>Adminläge är på</h2><div class="meta">Du kan ändra och ta bort alla pass och ta bort namn.</div>
-        <button class="btn big" id="adminOff">Lämna adminläge</button>`);
+        <div style="display:grid;gap:8px">
+          <button class="btn big" id="admWt">Typ av arbete – redigera listan</button>
+          <button class="btn big" id="admTpl">${svg("template", 16)} Veckomallar</button>
+          <button class="btn big" id="adminOff">Lämna adminläge</button>
+        </div>`);
+      $("#admWt", m).onclick = () => openWorkTypes();
+      $("#admTpl", m).onclick = () => openTemplates();
       $("#adminOff", m).onclick = () => { S.pin = null; sess.set("isg_pin", null); closeModal(); render(); };
       return;
     }
@@ -639,7 +710,8 @@
     const def = s ? null : { start: "18:00", end: "20:00" };
     const d0 = s ? s.start : new Date();
     const m = modal(`<h2>${isNew ? "Nytt pass" : "Ändra pass"}</h2>
-      <label>Typ av arbete</label><select id="fType">${Object.keys(WORK_TYPES).map((t) => `<option ${s?.work_type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <label>Typ av arbete</label><select id="fType">${[...S.workTypes.map((w) => w.name), ...(s && !S.workTypes.some((w) => w.name === s.work_type) ? [s.work_type] : [])]
+        .map((t) => `<option ${s?.work_type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
       <label>Rubrik (valfritt)</label><input type="text" id="fTitle" maxlength="60" placeholder="T.ex. Kvällsspolning" value="${esc(s?.title && s.title !== s.work_type ? s.title : "")}">
       <label>Plats</label><select id="fPlace">${PLACES.map((p) => `<option ${s?.place === p ? "selected" : ""}>${p}</option>`).join("")}</select>
       <label>Datum</label><input type="date" id="fDate" value="${dayKey(d0)}">
@@ -653,13 +725,13 @@
       <div style="margin-top:14px"><button class="btn primary big" id="fSave">${isNew ? "Lägg upp pass" : "Spara ändringar"}</button></div>`, null, true);
 
     const applyDefaults = () => {
-      const [mn, mx] = WORK_TYPES[$("#fType", m).value] || [1, 2];
+      const [mn, mx] = wtDefaults($("#fType", m).value);
       $("#fMin", m).value = mn; $("#fMax", m).value = mx;
     };
     if (isNew) applyDefaults();
     $("#fType", m).onchange = applyDefaults;
     $("#fJour", m).onchange = (e) => {
-      if (e.target.checked && isNew) { $("#fType", m).value = "Snöröjning"; applyDefaults(); if (!$("#fTitle", m).value) $("#fTitle", m).value = "Snöjour"; }
+      if (e.target.checked && isNew) { if (S.workTypes.some((w) => w.name === "Snöröjning")) { $("#fType", m).value = "Snöröjning"; applyDefaults(); } if (!$("#fTitle", m).value) $("#fTitle", m).value = "Snöjour"; }
     };
     $("#fSave", m).onclick = async () => {
       const date = $("#fDate", m).value, st = $("#fStart", m).value, et = $("#fEnd", m).value;
