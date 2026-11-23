@@ -1,6 +1,7 @@
-/* IS-gruppen – passbokning, version 1 */
+/* IS-gruppen – passbokning */
 (() => {
   "use strict";
+  const APP_VERSION = "1.3 (väder)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -622,6 +623,7 @@
   $("#newBtn").onclick = () => openShiftForm();
   window.matchMedia("(min-width: 900px)").addEventListener("change", () => { if (!S.view) render(); });
 
+  const verEl = document.getElementById("ver"); if (verEl) verEl.textContent = "Version " + APP_VERSION;
   renderHeader();
   renderToolbar();
   load().then(() => { if (!me()) openWho(); loadWeather(); });
