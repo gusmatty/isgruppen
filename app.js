@@ -144,6 +144,71 @@
   document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
   setInterval(() => { if (!document.hidden) render(); }, 60000); // uppdatera "passerat"-status
 
+
+  // ---------- Väder (SMHI öppna data, snow1g, CC BY 4.0) ----------
+  const WX_URL = "https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/15.42/lat/60.486/data.json";
+  const WX = { series: [], fetched: 0 };
+  const SNOW_SYMBOLS = new Set([15, 16, 17, 25, 26, 27]);
+  const SLEET_SYMBOLS = new Set([12, 13, 14, 22, 23, 24]);
+  function wxIcon(code) {
+    if (code <= 2) return "☀️"; if (code <= 4) return "⛅"; if (code <= 6) return "☁️"; if (code === 7) return "🌫️";
+    if (code <= 10) return "🌦️"; if (code === 11 || code === 21) return "⛈️"; if (code <= 14) return "🌨️";
+    if (code <= 17) return "🌨️"; if (code <= 20) return "🌧️"; if (code <= 24) return "🌨️"; return "❄️";
+  }
+  async function loadWeather() {
+    if (Date.now() - WX.fetched < 30 * 60000) return;
+    try {
+      const r = await fetch(WX_URL);
+      if (!r.ok) return;
+      const j = await r.json();
+      WX.series = (j.timeSeries || []).map((x) => ({
+        t: new Date(x.time).getTime(), temp: x.data.air_temperature, sym: x.data.symbol_code,
+        pr: x.data.precipitation_amount_mean || 0, wind: x.data.wind_speed,
+      })).filter((x) => x.temp !== undefined && x.temp > -90);
+      WX.fetched = Date.now();
+      render(); refreshOpenModal();
+    } catch (e) { console.warn("Väder kunde inte hämtas", e); }
+  }
+  // Prognospunkter som täcker intervallet [from, to). Glesa steg längre fram: ta närmaste punkt.
+  function wxPoints(from, to) {
+    if (!WX.series.length) return [];
+    const a = from.getTime(), b = to.getTime();
+    let pts = WX.series.filter((x) => x.t > a && x.t <= b + 3600000 * 0.5);
+    if (!pts.length) {
+      const near = WX.series.reduce((best, x) => Math.abs(x.t - a) < Math.abs(best.t - a) ? x : best, WX.series[0]);
+      if (Math.abs(near.t - a) <= 3 * 3600000) pts = [near];
+    }
+    return pts;
+  }
+  function wxSummary(pts) {
+    if (!pts.length) return null;
+    const temps = pts.map((p) => p.temp);
+    const snow = pts.some((p) => SNOW_SYMBOLS.has(p.sym) || (SLEET_SYMBOLS.has(p.sym)));
+    const worst = pts.reduce((w, p) => (p.sym > w.sym ? p : w), pts[0]);
+    return { min: Math.round(Math.min(...temps)), max: Math.round(Math.max(...temps)), icon: wxIcon(worst.sym),
+             snow, pr: pts.reduce((sum, p) => sum + p.pr, 0), wind: Math.round(Math.max(...pts.map((p) => p.wind))) };
+  }
+  const tempTxt = (w) => w.min === w.max ? `${w.min}°` : `${w.min}…${w.max}°`;
+  function wxShift(s) {
+    if (s.end <= new Date()) return "";
+    const w = wxSummary(wxPoints(s.start, s.end));
+    if (!w) return "";
+    return `<span class="wx${w.snow ? " snow" : ""}" title="SMHI-prognos">${w.icon} ${tempTxt(w)}${w.snow ? " snö" : ""}</span>`;
+  }
+  function wxDay(d) {
+    const from = startOfDay(d), to = addDays(from, 1);
+    if (to <= new Date()) return "";
+    const w = wxSummary(wxPoints(from, to));
+    if (!w) return "";
+    return `<span class="wxday">${w.icon} ${w.min}…${w.max}°${w.pr >= 0.5 ? ` · ${w.pr.toFixed(1).replace(".", ",")} mm` : ""}</span>`;
+  }
+  function wxDetail(s) {
+    const pts = wxPoints(s.start, s.end);
+    if (s.end <= new Date() || !pts.length) return "";
+    return `<section><h4>Väder under passet (SMHI)</h4><div class="wxrow">${pts.map((p) =>
+      `<span><b>${hm(new Date(p.t))}</b><br>${wxIcon(p.sym)} ${Math.round(p.temp)}°<br><small>${Math.round(p.wind)} m/s${p.pr >= 0.1 ? ` · ${p.pr.toFixed(1).replace(".", ",")} mm` : ""}</small></span>`).join("")}</div></section>`;
+  }
+
   // ---------- Rendering ----------
   function render() {
     renderHeader();
@@ -188,7 +253,7 @@
     return `<div class="card ${st}${isMine(s) ? " mine" : ""}" data-id="${s.id}">
       <div class="time">${timeRange(s)}</div>
       <div class="mid"><div class="ttl">${esc(s.title)}${s.is_jour ? '<span class="tag">JOUR</span>' : ""}${s.notes.length ? " 💬" : ""}</div>
-      <div class="sub">${sub}</div></div>
+      <div class="sub">${sub}</div>${wxShift(s) ? `<div class="sub">${wxShift(s)}</div>` : ""}</div>
       <div class="cnt">${st === "past" ? "Klart" : countText(s)}</div></div>`;
   }
 
@@ -232,7 +297,7 @@
     const todayKey = dayKey(now);
     for (const s of list) {
       const k = dayKey(s.start);
-      if (k !== lastDay) { html += `<div class="day${k === todayKey ? " today" : ""}">${k === todayKey ? "Idag · " : ""}${dayLabel(s.start)}</div>`; lastDay = k; }
+      if (k !== lastDay) { html += `<div class="day${k === todayKey ? " today" : ""}">${k === todayKey ? "Idag · " : ""}${dayLabel(s.start)}${wxDay(s.start)}</div>`; lastDay = k; }
       html += cardHtml(s);
     }
     if (!list.length) html = `<div class="empty">${S.filter === "missing" ? "Alla pass är bemannade 🎉" : S.filter === "mine" ? "Du har inga bokade pass de närmaste veckorna." : "Inga pass upplagda ännu."}</div>`;
@@ -277,7 +342,7 @@
     for (let i = 0; i < 7; i++) {
       const d = addDays(S.weekStart, i), k = dayKey(d);
       const items = S.shifts.filter((s) => dayKey(s.start) === k);
-      cols += `<div class="wcol"><div class="whead${k === todayKey ? " today" : ""}">${shortDay(d)}</div>${items.map((s) => cardHtml(s, true)).join("") || ""}</div>`;
+      cols += `<div class="wcol"><div class="whead${k === todayKey ? " today" : ""}">${shortDay(d)}${wxDay(d) ? `<br>${wxDay(d)}` : ""}</div>${items.map((s) => cardHtml(s, true)).join("") || ""}</div>`;
     }
     main.innerHTML = `<div class="weekwrap">
       <aside class="names"><h3>Namn</h3>${chips}<button class="chip" id="addNameChip" style="background:#fff;border:1px dashed var(--line)">+ Namn</button>
@@ -390,6 +455,7 @@
               : `<button class="btn primary big" id="pickMe">Välj vem du är för att boka</button>`}</div>
             ${others.length && s.bookings.length < s.max_people ? `<div class="row" style="margin-top:8px"><select id="otherSel" style="flex:1"><option value="">Boka in någon annan…</option>${others.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select><button class="btn" id="bookOther">Boka</button></div>` : ""}` : ""}
         </section>
+        ${wxDetail(s)}
         <section><h4>Anteckningar</h4>
           ${s.notes.map((n) => `<div class="note">${esc(n.body)}<small>${esc(personName(n.person_id))} · ${shortDay(new Date(n.created_at))} ${hm(new Date(n.created_at))}</small></div>`).join("") || `<div class="meta">Inga anteckningar.</div>`}
           ${mine ? `<textarea id="noteTxt" maxlength="1000" placeholder="T.ex. Tankvagnen läcker vid kopplingen"></textarea><div style="margin-top:6px"><button class="btn primary" id="noteSave">Spara anteckning</button></div>`
@@ -558,5 +624,6 @@
 
   renderHeader();
   renderToolbar();
-  load().then(() => { if (!me()) openWho(); });
+  load().then(() => { if (!me()) openWho(); loadWeather(); });
+  setInterval(() => { if (!document.hidden) loadWeather(); }, 10 * 60000);
 })();
