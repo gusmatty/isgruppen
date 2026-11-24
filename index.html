@@ -239,7 +239,13 @@
   .icon-btn:disabled { opacity: .35; }
   @media (max-width: 520px) { .wt-head { display: none; } .wt-row { grid-template-columns: minmax(0,1fr) 52px 52px; } .wt-btns { grid-column: 1 / -1; justify-content: flex-end; } }
   /* Isguider */
-  .ig-chapter { font: 700 17px "Space Grotesk", Inter, sans-serif; margin: 4px 0 6px; }
+  .ig-chapter { font: 700 17px "Space Grotesk", Inter, sans-serif; margin: 12px 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; }
+  .ig-ctl { display: flex; gap: 6px; flex-wrap: wrap; font-family: Inter, sans-serif; }
+  .ig-secctl { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .btn.sm { padding: 5px 10px; font-size: 13px; font-weight: 500; }
+  .btn.sm svg { vertical-align: -2px; }
+  .ig-steps { min-height: 260px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; line-height: 1.5; }
+  code { background: var(--surface3); padding: 1px 5px; border-radius: 5px; font-size: 13px; }
   details.ig summary { font-size: 16px; }
   .ig-body { padding: 0 14px 14px; }
   .ig-intro { margin: 0 0 10px; padding: 0 !important; }
@@ -292,8 +298,8 @@
 <button class="fab" id="newBtn">+ Nytt pass</button>
 <div id="modalRoot"></div>
 
-<script src="config.js?v=2.2"></script>
+<script src="config.js?v=2.3"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=2.2"></script>
+<script src="app.js?v=2.3"></script>
 </body>
 </html>

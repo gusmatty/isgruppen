@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "2.2 (isguide)";
+  const APP_VERSION = "2.3 (redigerbara guider)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -1123,8 +1123,8 @@
 
 
   // ---------- Isguider (arbetsinstruktioner) ----------
-  // Lägg till nya avsnitt här. Ordningen i listan = ordningen i guiden.
-  const ICE_GUIDES = [
+  // Standardinnehåll. När admin har sparat i appen används versionen i databasen (app_content.ice_guides).
+  const DEFAULT_ICE_GUIDES = [
     {
       chapter: "1. Uppspolning av bandyplan",
       sections: [
@@ -1169,18 +1169,138 @@
       ],
     },
   ];
-  function iceGuidesHtml() {
-    return ICE_GUIDES.map((ch) => `<div class="ig-chapter">${esc(ch.chapter)}</div>` + ch.sections.map((sec) => `
-      <details class="g ig"${sec.open ? " open" : ""}><summary>${esc(sec.id)} ${esc(sec.title)}</summary>
+  S.iceGuides = DEFAULT_ICE_GUIDES; S.guidesInDb = false;
+  async function loadIceGuides() {
+    const { data, error } = await sb.from("app_content").select("data").eq("key", "ice_guides").maybeSingle();
+    if (error) { S.guidesInDb = false; return; }
+    S.guidesInDb = true;
+    if (data && Array.isArray(data.data)) S.iceGuides = data.data;
+  }
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+
+  function iceGuidesHtml(admin) {
+    const G = S.iceGuides;
+    const ctl = (attrs, label, icon, cls = "") => `<button class="btn sm ${cls}" ${attrs}>${icon ? svg(icon, 13) + " " : ""}${label}</button>`;
+    let h = G.map((ch, ci) => `<div class="ig-chapter"><span>${esc(ch.chapter)}</span>
+        ${admin ? `<span class="ig-ctl">${ctl(`data-chren="${ci}"`, "Byt namn")}${ctl(`data-chup="${ci}" ${ci === 0 ? "disabled" : ""}`, "↑")}${ctl(`data-chdown="${ci}" ${ci === G.length - 1 ? "disabled" : ""}`, "↓")}${!ch.sections.length ? ctl(`data-chdel="${ci}"`, "", "trash", "danger") : ""}</span>` : ""}</div>`
+      + ch.sections.map((sec, si) => `
+      <details class="g ig"${sec.open ? " open" : ""}><summary>${esc(sec.id || "")} ${esc(sec.title || "")}</summary>
         <div class="ig-body">
           ${sec.intro ? `<p class="ig-intro">${esc(sec.intro)}</p>` : ""}
           ${sec.goal ? `<div class="ig-box ig-goal"><b>Mål:</b> ${esc(sec.goal)}</div>` : ""}
           ${sec.warning ? `<div class="ig-box ig-warn"><b>⚠️ Viktigt:</b> ${esc(sec.warning)}</div>` : ""}
-          ${sec.steps.map((st, i) => `<div class="ig-step"><div class="ig-step-h"><span class="ig-num">${i + 1}</span>${esc(st.title)}</div>
+          ${(sec.steps || []).map((st, i) => `<div class="ig-step"><div class="ig-step-h"><span class="ig-num">${i + 1}</span>${esc(st.title)}</div>
             <ol>${st.items.map((t) => `<li>${esc(t)}</li>`).join("")}</ol></div>`).join("")}
+          ${admin ? `<div class="ig-ctl ig-secctl">${ctl(`data-secedit="${ci}:${si}"`, "Redigera", "note", "primary")}
+            ${ctl(`data-secup="${ci}:${si}" ${si === 0 ? "disabled" : ""}`, "↑ Upp")}${ctl(`data-secdown="${ci}:${si}" ${si === ch.sections.length - 1 ? "disabled" : ""}`, "↓ Ner")}
+            ${ctl(`data-secdel="${ci}:${si}"`, "Ta bort", "trash", "danger")}</div>` : ""}
         </div></details>`).join("")).join("");
+    if (admin) h += `<div class="ig-ctl" style="margin-top:10px">${ctl('id="igNewSec"', "+ Nytt avsnitt", "", "primary")}${ctl('id="igNewCh"', "+ Nytt kapitel")}</div>`;
+    return h;
   }
 
+  async function saveGuides(data) {
+    if (!S.guidesInDb) {
+      modal(`<h2>Redigera guider</h2><div class="alert">Redigering är inte installerad i databasen än.
+        Kör filen <b>supabase-v4-guider.sql</b> i Supabase → SQL Editor → New query (se GUIDE.md).</div>`);
+      return false;
+    }
+    try { await rpc("save_content", { p_key: "ice_guides", p_data: data, p_pin: S.pin, p_actor: actor() }); }
+    catch { return false; }
+    S.iceGuides = data; toast("Guiden sparad ✓"); return true;
+  }
+
+  function wireGuideAdmin(m) {
+    const G = () => clone(S.iceGuides);
+    const pos = (v) => v.split(":").map(Number);
+    const after = async (data) => { if (await saveGuides(data)) openGuide(); };
+    m.querySelectorAll("[data-secedit]").forEach((b) => b.onclick = () => { const [ci, si] = pos(b.dataset.secedit); openSectionEditor(ci, si); });
+    m.querySelectorAll("[data-secup],[data-secdown]").forEach((b) => b.onclick = () => {
+      const up = b.hasAttribute("data-secup"); const [ci, si] = pos(b.dataset.secup || b.dataset.secdown);
+      const d = G(), arr = d[ci].sections, j = si + (up ? -1 : 1);
+      [arr[si], arr[j]] = [arr[j], arr[si]]; after(d);
+    });
+    m.querySelectorAll("[data-secdel]").forEach((b) => b.onclick = () => {
+      const [ci, si] = pos(b.dataset.secdel); const d = G(); const sec = d[ci].sections[si];
+      if (!confirm(`Ta bort avsnittet "${sec.id || ""} ${sec.title || ""}"?`)) return;
+      d[ci].sections.splice(si, 1); after(d);
+    });
+    m.querySelectorAll("[data-chren]").forEach((b) => b.onclick = () => {
+      const ci = Number(b.dataset.chren); const d = G();
+      const name = prompt("Kapitlets rubrik:", d[ci].chapter); if (!name || !name.trim()) return;
+      d[ci].chapter = name.trim(); after(d);
+    });
+    m.querySelectorAll("[data-chup],[data-chdown]").forEach((b) => b.onclick = () => {
+      const up = b.hasAttribute("data-chup"); const ci = Number(b.dataset.chup ?? b.dataset.chdown);
+      const d = G(), j = ci + (up ? -1 : 1); [d[ci], d[j]] = [d[j], d[ci]]; after(d);
+    });
+    m.querySelectorAll("[data-chdel]").forEach((b) => b.onclick = () => {
+      const ci = Number(b.dataset.chdel); const d = G();
+      if (!confirm(`Ta bort det tomma kapitlet "${d[ci].chapter}"?`)) return;
+      d.splice(ci, 1); after(d);
+    });
+    $("#igNewSec", m)?.addEventListener("click", () => openSectionEditor(null, null));
+    $("#igNewCh", m)?.addEventListener("click", () => {
+      const name = prompt("Rubrik för nytt kapitel (t.ex. \"2. Snöröjning\"):"); if (!name || !name.trim()) return;
+      const d = G(); d.push({ chapter: name.trim(), sections: [] }); after(d);
+    });
+  }
+
+  // Steg skrivs som text: en rad som börjar med # = nytt steg, övriga rader = moment
+  const stepsToText = (steps) => (steps || []).map((st) => `# ${st.title}\n${st.items.join("\n")}`).join("\n\n");
+  function textToSteps(txt) {
+    const steps = [];
+    for (const raw of txt.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith("#")) { steps.push({ title: line.replace(/^#+\s*/, ""), items: [] }); continue; }
+      const item = line.replace(/^(\d+[.)]|[-•*])\s+/, "");
+      if (!steps.length) steps.push({ title: "Steg", items: [] });
+      steps[steps.length - 1].items.push(item);
+    }
+    return steps;
+  }
+
+  function openSectionEditor(ci, si) {
+    const isNew = ci === null;
+    const G = S.iceGuides;
+    const sec = isNew ? { id: "", title: "", open: false, intro: "", goal: "", warning: "", steps: [] } : G[ci].sections[si];
+    const m = modal(`<h2>${isNew ? "Nytt avsnitt" : "Redigera avsnitt"}</h2>
+      <label for="seCh">Kapitel</label>
+      <select id="seCh">${G.map((ch, i) => `<option value="${i}" ${i === (ci ?? G.length - 1) ? "selected" : ""}>${esc(ch.chapter)}</option>`).join("")}
+        <option value="new">+ Nytt kapitel…</option></select>
+      <div id="seNewChWrap" style="display:none"><label for="seNewCh">Nytt kapitels rubrik</label><input type="text" id="seNewCh" placeholder="T.ex. 2. Snöröjning"></div>
+      <div class="grid2" style="grid-template-columns:90px 1fr">
+        <div><label for="seId">Nummer</label><input type="text" id="seId" maxlength="10" value="${esc(sec.id || "")}" placeholder="1.2"></div>
+        <div><label for="seTitle">Rubrik</label><input type="text" id="seTitle" maxlength="80" value="${esc(sec.title || "")}" placeholder="T.ex. Slangspolning"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="seOpen" ${sec.open ? "checked" : ""}> Visa utfälld när guiden öppnas</label>
+      <label for="seIntro">Inledning (valfritt)</label><textarea id="seIntro" maxlength="2000">${esc(sec.intro || "")}</textarea>
+      <label for="seGoal">Mål (valfritt)</label><textarea id="seGoal" maxlength="1000">${esc(sec.goal || "")}</textarea>
+      <label for="seWarn">⚠️ Viktigt (valfritt)</label><textarea id="seWarn" maxlength="1000">${esc(sec.warning || "")}</textarea>
+      <label for="seSteps">Steg</label>
+      <p class="gnote" style="margin:0 0 6px">Börja varje steg med en rad som börjar med <b>#</b>, t.ex. <code># Starta traktorn</code>.
+        Skriv sedan ett moment per rad. Numreringen sköts automatiskt.</p>
+      <textarea id="seSteps" class="ig-steps" placeholder="# Starta traktorn&#10;Slå på huvudströmbrytaren.&#10;Vrid om nyckeln.&#10;&#10;# Kör iväg&#10;Håll ner bromsen.">${esc(stepsToText(sec.steps))}</textarea>
+      <div style="margin-top:14px"><button class="btn primary big" id="seSave">Spara</button></div>`, null, true);
+    $("#seCh", m).onchange = () => { $("#seNewChWrap", m).style.display = $("#seCh", m).value === "new" ? "" : "none"; };
+    $("#seSave", m).onclick = async () => {
+      const title = $("#seTitle", m).value.trim();
+      if (!title) return toast("Skriv en rubrik", true);
+      const steps = textToSteps($("#seSteps", m).value);
+      const upd = { id: $("#seId", m).value.trim(), title, open: $("#seOpen", m).checked,
+        intro: $("#seIntro", m).value.trim(), goal: $("#seGoal", m).value.trim(), warning: $("#seWarn", m).value.trim(), steps };
+      const d = clone(G);
+      let target = $("#seCh", m).value;
+      if (target === "new") {
+        const name = $("#seNewCh", m).value.trim(); if (!name) return toast("Skriv det nya kapitlets rubrik", true);
+        d.push({ chapter: name, sections: [] }); target = d.length - 1;
+      } else target = Number(target);
+      if (!isNew && target === ci) d[ci].sections[si] = upd;
+      else { if (!isNew) d[ci].sections.splice(si, 1); d[target].sections.push(upd); }
+      if (await saveGuides(d)) openGuide();
+    };
+  }
   // ---------- Guide ----------
   function detectDevice() {
     const ua = navigator.userAgent || "";
@@ -1193,15 +1313,16 @@
     if (android) return "android";
     return "desktop";
   }
-  function openGuide() {
+  async function openGuide() {
+    await loadIceGuides();
     const dev = detectDevice();
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
     const o = (k) => (k === dev ? " open" : "");
     const ex = (st, label) => `<span class="st-${st}"><span class="pill">${label}</span></span>`;
-    modal(`<h2>${svg("info", 20)} Guide</h2>
+    const gm = modal(`<h2>${svg("info", 20)} Guide</h2>
       <div class="meta">Isguider, hemskärmen och hur appen används.</div>
 
-      <section><h4>Isguider</h4>${iceGuidesHtml()}</section>
+      <section><h4>Isguider</h4>${isAdmin() ? `<p class="gnote" style="margin:-4px 0 8px">Adminläge: du kan redigera, flytta och lägga till isguider.</p>` : ""}${iceGuidesHtml(isAdmin())}</section>
 
       <section><h4>Lägg appen på hemskärmen</h4>
         ${isStandalone ? `<div class="alert">Du har redan öppnat appen från hemskärmen. 👍</div>` : ""}
@@ -1273,6 +1394,7 @@
           <li><b>Hänglåset</b> ${svg("lock", 14)} är för admin (kräver PIN-kod) och behövs inte för att boka.</li>
         </ul>
       </section>`);
+    if (isAdmin()) wireGuideAdmin(gm);
   }
 
   // ---------- Logg ----------
