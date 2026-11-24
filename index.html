@@ -238,6 +238,20 @@
   .icon-btn.danger { color: var(--danger); border-color: var(--danger-line); }
   .icon-btn:disabled { opacity: .35; }
   @media (max-width: 520px) { .wt-head { display: none; } .wt-row { grid-template-columns: minmax(0,1fr) 52px 52px; } .wt-btns { grid-column: 1 / -1; justify-content: flex-end; } }
+  /* Isguider */
+  .ig-chapter { font: 700 17px "Space Grotesk", Inter, sans-serif; margin: 4px 0 6px; }
+  details.ig summary { font-size: 16px; }
+  .ig-body { padding: 0 14px 14px; }
+  .ig-intro { margin: 0 0 10px; padding: 0 !important; }
+  .ig-box { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 15px; }
+  .ig-goal { background: var(--surface2); border: 1px solid var(--line); color: var(--ink); }
+  .ig-warn { background: var(--alert-bg); border: 1px solid var(--alert-line); color: var(--ink); }
+  .ig-step { margin-top: 14px; }
+  .ig-step-h { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  .ig-num { width: 26px; height: 26px; border-radius: 50%; background: var(--seat-fill); color: var(--seat-fill-fg); display: inline-flex;
+    align-items: center; justify-content: center; font-size: 13px; flex: none; }
+  details.ig ol { padding: 4px 0 0 52px !important; margin: 0; }
+  details.ig li { margin: 6px 0; line-height: 1.45; }
   /* Guide */
   .modal h2 svg { vertical-align: -3px; }
   details.g { border: 1px solid var(--line); border-radius: 12px; margin: 8px 0; background: var(--surface2); }
@@ -278,8 +292,8 @@
 <button class="fab" id="newBtn">+ Nytt pass</button>
 <div id="modalRoot"></div>
 
-<script src="config.js?v=2.1"></script>
+<script src="config.js?v=2.2"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=2.1"></script>
+<script src="app.js?v=2.2"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 /* IS-gruppen – passbokning */
 (() => {
   "use strict";
-  const APP_VERSION = "2.1 (arbetstyper)";
+  const APP_VERSION = "2.2 (isguide)";
 
   // ---------- Konstanter ----------
   const WORK_TYPES = {
@@ -1121,6 +1121,66 @@
     });
   }
 
+
+  // ---------- Isguider (arbetsinstruktioner) ----------
+  // Lägg till nya avsnitt här. Ordningen i listan = ordningen i guiden.
+  const ICE_GUIDES = [
+    {
+      chapter: "1. Uppspolning av bandyplan",
+      sections: [
+        {
+          id: "1.1", title: "Tankspolning", open: true,
+          intro: "Banan spolas med traktor och tankbil. Tanken rymmer 5 000 liter.",
+          goal: "Cirka 2–3 cm is och en yta helt fri från grus. Det brukar ta 25–30 vändor.",
+          warning: "Isen måste frysa ordentligt mellan varje vända. Vänta hellre lite för länge än för kort.",
+          steps: [
+            { title: "Starta traktorn", items: [
+              "Slå på huvudströmbrytaren med flärpen.",
+              "Lägg växeln i parkeringsläge (mitten, nere).",
+              "Håll in kopplingen.",
+              "Vrid om nyckeln." ] },
+            { title: "Kör iväg", items: [
+              "Håll ner bromsen.",
+              "Lägg i ”framåt”.",
+              "Släpp bromsen så att traktorn börjar rulla.",
+              "Tryck på gasen." ] },
+            { title: "Fyll tanken med vatten", items: [
+              "Ta fram den gula, tjocka slangen.",
+              "Koppla in den med böjen mot pumphuset och med brandkopplingen i tanken.",
+              "Slå på vattnet.",
+              "Vrid av kranen när tanken börjar bli full.",
+              "Lossa kopplingen vid pumphuset.",
+              "Vänta en kort stund så att slangen hinner tömmas på vatten vid tanken.",
+              "Lossa slangen från tanken.",
+              "Lägg undan slangen så att du kommer fram med traktorn nästa gång du ska fylla." ] },
+            { title: "Spola", items: [
+              "Börja i ett hörn av planen.",
+              "Släpp på vattnet och spola.",
+              "Vänd in på 1/3.",
+              "Kör i cirka 7–8 km/h. Då räcker en full tank till en halv plan.",
+              "Sluta vid mittlinjen. Det som blir kvar i tanken tömmer du på lilla planen, eller så fyller du på tanken igen.",
+              "Fyll tanken och spola nästa lass på den andra planhalvan." ] },
+            { title: "Låt frysa och upprepa", items: [
+              "Vänta tills isen har frusit ordentligt.",
+              "Upprepa steg 3–4.",
+              "Fortsätt tills isen är 2–3 cm tjock och ytan är helt fri från grus (cirka 25–30 vändor)." ] },
+          ],
+        },
+      ],
+    },
+  ];
+  function iceGuidesHtml() {
+    return ICE_GUIDES.map((ch) => `<div class="ig-chapter">${esc(ch.chapter)}</div>` + ch.sections.map((sec) => `
+      <details class="g ig"${sec.open ? " open" : ""}><summary>${esc(sec.id)} ${esc(sec.title)}</summary>
+        <div class="ig-body">
+          ${sec.intro ? `<p class="ig-intro">${esc(sec.intro)}</p>` : ""}
+          ${sec.goal ? `<div class="ig-box ig-goal"><b>Mål:</b> ${esc(sec.goal)}</div>` : ""}
+          ${sec.warning ? `<div class="ig-box ig-warn"><b>⚠️ Viktigt:</b> ${esc(sec.warning)}</div>` : ""}
+          ${sec.steps.map((st, i) => `<div class="ig-step"><div class="ig-step-h"><span class="ig-num">${i + 1}</span>${esc(st.title)}</div>
+            <ol>${st.items.map((t) => `<li>${esc(t)}</li>`).join("")}</ol></div>`).join("")}
+        </div></details>`).join("")).join("");
+  }
+
   // ---------- Guide ----------
   function detectDevice() {
     const ua = navigator.userAgent || "";
@@ -1139,7 +1199,9 @@
     const o = (k) => (k === dev ? " open" : "");
     const ex = (st, label) => `<span class="st-${st}"><span class="pill">${label}</span></span>`;
     modal(`<h2>${svg("info", 20)} Guide</h2>
-      <div class="meta">Så lägger du appen på hemskärmen och så använder du den.</div>
+      <div class="meta">Isguider, hemskärmen och hur appen används.</div>
+
+      <section><h4>Isguider</h4>${iceGuidesHtml()}</section>
 
       <section><h4>Lägg appen på hemskärmen</h4>
         ${isStandalone ? `<div class="alert">Du har redan öppnat appen från hemskärmen. 👍</div>` : ""}
